@@ -1,0 +1,121 @@
+@font-face {
+    font-family: "Atkinson Hyperlegible Next";
+    src: url("./assets/fonts/AtkinsonHyperlegibleNext-Regular.woff2")
+        format("woff2");
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Next";
+    src: url("./assets/fonts/AtkinsonHyperlegibleNext-Bold.woff2")
+        format("woff2");
+    font-weight: 700;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Next";
+    src: url("./assets/fonts/AtkinsonHyperlegibleNext-RegularItalic.woff2")
+        format("woff2");
+    font-weight: 400;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Next";
+    src: url("./assets/fonts/AtkinsonHyperlegibleNext-BoldItalic.woff2")
+        format("woff2");
+    font-weight: 700;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Mono";
+    src: url("./assets/fonts/AtkinsonHyperlegibleMono-Regular.woff2")
+        format("woff2");
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Mono";
+    src: url("./assets/fonts/AtkinsonHyperlegibleMono-Bold.woff2")
+        format("woff2");
+    font-weight: 700;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Mono";
+    src: url("./assets/fonts/AtkinsonHyperlegibleMono-RegularItalic.woff2")
+        format("woff2");
+    font-weight: 400;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: "Atkinson Hyperlegible Mono";
+    src: url("./assets/fonts/AtkinsonHyperlegibleMono-BoldItalic.woff2")
+        format("woff2");
+    font-weight: 700;
+    font-style: italic;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --font-sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+    --font-mono: "Atkinson Hyperlegible Mono", monospace;
+
+    /* Colours */
+    --colour-bg: #f5f5f4;
+    --colour-surface: #ffffff;
+    --colour-border: #e2e0dd;
+    --colour-text: #1c1917;
+    --colour-text-muted: #78716c;
+    --colour-primary: #2563eb;
+    --colour-primary-hover: #1d4ed8;
+    --colour-danger: #dc2626;
+    --colour-success: #16a34a;
+
+    /* Shape */
+    --radius: 6px;
+    --radius-lg: 10px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+html,
+body {
+    height: 100%;
+    background: var(--colour-bg);
+    color: var(--colour-text);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+#app {
+    height: 100%;
+}
+
+button {
+    font-family: var(--font-sans);
+    cursor: pointer;
+}
+
+input,
+textarea,
+select {
+    font-family: var(--font-sans);
+}
