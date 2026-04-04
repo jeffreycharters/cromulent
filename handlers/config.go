@@ -5,6 +5,7 @@ import (
 	"cromulent/config"
 	"cromulent/db"
 	"fmt"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -74,4 +75,20 @@ func (h *ConfigHandler) SetDBPath(path string) error {
 		return err
 	}
 	return db.Init(path)
+}
+
+func (h *ConfigHandler) OpenDBFolderPicker() (string, error) {
+	if h.ctx == nil {
+		return "", fmt.Errorf("context not ready")
+	}
+	folder, err := runtime.OpenDirectoryDialog(h.ctx, runtime.OpenDialogOptions{
+		Title: "Choose location for new database",
+	})
+	if err != nil {
+		return "", err
+	}
+	if folder == "" {
+		return "", nil
+	}
+	return filepath.Join(folder, "cromulent.db"), nil
 }

@@ -4,16 +4,38 @@
     import Setup from "./lib/Setup.svelte";
     import Shell from "./lib/Shell.svelte";
     import Admin from "./lib/Admin.svelte";
+    import DBPicker from "./lib/DBPicker.svelte";
+    import Settings from "./lib/Settings.svelte";
 
     import { NeedsSetup } from "../wailsjs/go/handlers/SetupHandler";
+    import { GetDBPath, InitDB } from "../wailsjs/go/handlers/ConfigHandler";
 
     let view = "loading";
     let currentUser: any = null;
 
     onMount(async () => {
-        const needsSetup = await NeedsSetup();
-        view = needsSetup ? "setup" : "login";
+        try {
+            const dbPath = await GetDBPath();
+            if (!dbPath) {
+                view = "db-pick";
+                return;
+            }
+            await InitDB();
+            const needsSetup = await NeedsSetup();
+            view = needsSetup ? "setup" : "login";
+        } catch (e) {
+            view = "db-pick";
+        }
     });
+
+    async function handleDBReady() {
+        try {
+            const needsSetup = await NeedsSetup();
+            view = needsSetup ? "setup" : "login";
+        } catch {
+            view = "login";
+        }
+    }
 
     function handleLogin(event: CustomEvent) {
         currentUser = event.detail;
@@ -33,6 +55,8 @@
 
 {#if view === "loading"}
     <div class="loading">Loading…</div>
+{:else if view === "db-pick"}
+    <DBPicker on:ready={handleDBReady} />
 {:else if view === "setup"}
     <Setup on:done={() => (view = "login")} />
 {:else if view === "login"}
@@ -50,6 +74,8 @@
             <p>Chart review — todo</p>
         {:else if view === "admin"}
             <Admin {currentUser} />
+        {:else if view === "settings"}
+            <Settings on:logout={handleLogout} />
         {/if}
     </Shell>
 {/if}

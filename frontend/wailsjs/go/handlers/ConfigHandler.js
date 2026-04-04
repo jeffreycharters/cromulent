@@ -14,6 +14,10 @@ export function OpenDBFilePicker() {
   return window['go']['handlers']['ConfigHandler']['OpenDBFilePicker']();
 }
 
+export function OpenDBFolderPicker() {
+  return window['go']['handlers']['ConfigHandler']['OpenDBFolderPicker']();
+}
+
 export function SetContext(arg1) {
   return window['go']['handlers']['ConfigHandler']['SetContext'](arg1);
 }

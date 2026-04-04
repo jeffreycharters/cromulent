@@ -111,6 +111,8 @@ body {
 
 button {
     font-family: var(--font-sans);
+    font-size: 0.875rem;
+    color: var(--colour-text);
     cursor: pointer;
 }
 

@@ -8,6 +8,8 @@ export function InitDB():Promise<void>;
 
 export function OpenDBFilePicker():Promise<string>;
 
+export function OpenDBFolderPicker():Promise<string>;
+
 export function SetContext(arg1:context.Context):Promise<void>;
 
 export function SetDBPath(arg1:string):Promise<void>;
