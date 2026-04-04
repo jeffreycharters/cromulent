@@ -16,14 +16,24 @@
         {
             label: "Data Entry",
             view: "data-entry",
-            roles: ["technician", "supervisor", "admin"],
+            roles: ["technician", "reviewer", "supervisor", "admin"],
         },
         {
             label: "Chart Review",
             view: "chart-review",
             roles: ["reviewer", "supervisor", "admin"],
         },
+        {
+            label: "Library",
+            view: "library",
+            roles: ["technician", "reviewer", "supervisor", "admin"],
+        },
         { label: "Admin", view: "admin", roles: ["admin"] },
+        {
+            label: "Settings",
+            view: "settings",
+            roles: ["technician", "reviewer", "supervisor", "admin"],
+        },
     ];
 
     $: visibleItems = navItems.filter((item) =>

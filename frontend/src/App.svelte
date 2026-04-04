@@ -4,6 +4,8 @@
     import Setup from "./lib/Setup.svelte";
     import Shell from "./lib/Shell.svelte";
     import Admin from "./lib/Admin.svelte";
+    import Library from "./lib/Library.svelte";
+
     import DBPicker from "./lib/DBPicker.svelte";
     import Settings from "./lib/Settings.svelte";
 
@@ -72,6 +74,8 @@
             <p>Data entry — todo</p>
         {:else if view === "chart-review"}
             <p>Chart review — todo</p>
+        {:else if view === "library"}
+            <Library {currentUser} />
         {:else if view === "admin"}
             <Admin {currentUser} />
         {:else if view === "settings"}

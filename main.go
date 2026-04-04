@@ -7,18 +7,12 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-
-	"cromulent/db"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
-	if err := db.Init("cromulent.db"); err != nil {
-		log.Fatalf("db init: %v", err)
-	}
-
 	app := NewApp()
 
 	err := wails.Run(&options.App{
@@ -35,6 +29,8 @@ func main() {
 			app.Auth,
 			app.Setup,
 			app.Config,
+			app.Library,
+			app.MMA,
 		},
 	})
 	if err != nil {
