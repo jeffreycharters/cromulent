@@ -8,6 +8,7 @@
     import DBPicker from "./lib/DBPicker.svelte";
     import Settings from "./lib/Settings.svelte";
     import DataEntry from "./lib/DataEntry.svelte";
+    import ChartReview from "./lib/ChartReview.svelte";
 
     import { NeedsSetup } from "../wailsjs/go/handlers/SetupHandler";
     import { GetDBPath, InitDB } from "../wailsjs/go/handlers/ConfigHandler";
@@ -73,7 +74,7 @@
         {#if view === "data-entry"}
             <DataEntry {currentUser} />
         {:else if view === "chart-review"}
-            <p>Chart review — todo</p>
+            <ChartReview />
         {:else if view === "library"}
             <Library {currentUser} />
         {:else if view === "admin"}
