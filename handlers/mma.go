@@ -36,11 +36,13 @@ func (h *MMAHandler) ListMMAsForMethod(methodID int64) ([]models.MMAEntry, error
 			mma.analyte_id,
 			a.name AS analyte_name,
 			a.unit,
-			mma.display_order
-		FROM material_method_analytes mma
-		JOIN materials mat ON mat.id = mma.material_id
-		JOIN analytes a ON a.id = mma.analyte_id
-		WHERE mma.method_id = ?
+			mma.display_order,
+			mma.active
+			FROM material_method_analytes mma
+			JOIN materials mat ON mat.id = mma.material_id
+			JOIN methods met ON met.id = mma.method_id
+			JOIN analytes a ON a.id = mma.analyte_id
+			WHERE mma.method_id = ?
 		ORDER BY mat.name, mma.display_order
 	`, methodID)
 	if err != nil {
@@ -55,6 +57,7 @@ func (h *MMAHandler) ListMMAsForMethod(methodID int64) ([]models.MMAEntry, error
 			&e.ID, &e.MaterialID, &e.MaterialName,
 			&e.MethodID, &e.MethodName,
 			&e.AnalyteID, &e.AnalyteName, &e.Unit, &e.DisplayOrder,
+			&e.Active,
 		); err != nil {
 			return nil, err
 		}
@@ -75,7 +78,8 @@ func (h *MMAHandler) ListAllMMAs() ([]models.MMAEntry, error) {
         mma.analyte_id,
         a.name AS analyte_name,
         a.unit,
-        mma.display_order
+        mma.display_order,
+        mma.active
     FROM material_method_analytes mma
     JOIN materials mat ON mat.id = mma.material_id
     JOIN methods met ON met.id = mma.method_id
@@ -93,7 +97,7 @@ func (h *MMAHandler) ListAllMMAs() ([]models.MMAEntry, error) {
 		if err := rows.Scan(
 			&e.ID, &e.MaterialID, &e.MaterialName,
 			&e.MethodID, &e.MethodName,
-			&e.AnalyteID, &e.AnalyteName, &e.Unit, &e.DisplayOrder,
+			&e.AnalyteID, &e.AnalyteName, &e.Unit, &e.DisplayOrder, &e.Active,
 		); err != nil {
 			return nil, err
 		}
@@ -115,19 +119,25 @@ func (h *MMAHandler) RemoveAnalyteFromMMA(id int64) error {
 	return nil
 }
 
-func (h *MMAHandler) UpdateDisplayOrder(id int64, displayOrder int) error {
-	res, err := db.DB.Exec(
-		`UPDATE material_method_analytes SET display_order = ? WHERE id = ?`,
-		displayOrder, id,
-	)
+func (h *MMAHandler) UpdateDisplayOrders(ids []int64, orders []int) error {
+	if len(ids) != len(orders) {
+		return fmt.Errorf("ids and orders length mismatch")
+	}
+	tx, err := db.DB.Begin()
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return fmt.Errorf("not found")
+	defer tx.Rollback()
+
+	for i, id := range ids {
+		if _, err := tx.Exec(
+			`UPDATE material_method_analytes SET display_order = ? WHERE id = ?`,
+			orders[i], id,
+		); err != nil {
+			return err
+		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (h *MMAHandler) ListUsedMMAIDs() ([]int64, error) {
@@ -146,4 +156,14 @@ func (h *MMAHandler) ListUsedMMAIDs() ([]int64, error) {
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+func (h *MMAHandler) DeactivateMMA(id int64) error {
+	_, err := db.DB.Exec(`UPDATE material_method_analytes SET active = 0 WHERE id = ?`, id)
+	return err
+}
+
+func (h *MMAHandler) ActivateMMA(id int64) error {
+	_, err := db.DB.Exec(`UPDATE material_method_analytes SET active = 1 WHERE id = ?`, id)
+	return err
 }

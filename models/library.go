@@ -28,4 +28,23 @@ type MMAEntry struct {
 	AnalyteName  string `json:"analyte_name"`
 	Unit         string `json:"unit"`
 	DisplayOrder int    `json:"display_order"`
+	Active       bool   `json:"active"`
+}
+
+type MethodWithMaterials struct {
+	ID        int64             `json:"id"`
+	Name      string            `json:"name"`
+	Materials []MaterialSummary `json:"materials"`
+}
+
+type MaterialSummary struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+type ComboAnalyte struct {
+	MMAID        int64  `json:"mma_id"`
+	Name         string `json:"name"`
+	Unit         string `json:"unit"`
+	DisplayOrder int    `json:"display_order"`
 }

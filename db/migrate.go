@@ -153,4 +153,8 @@ CREATE TABLE IF NOT EXISTS spc_rule_sets (
     created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );`,
 	},
+	{
+		version: 2,
+		sql:     `ALTER TABLE material_method_analytes ADD COLUMN active INTEGER NOT NULL DEFAULT 1;`,
+	},
 }

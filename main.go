@@ -31,6 +31,7 @@ func main() {
 			app.Config,
 			app.Library,
 			app.MMA,
+			app.DataEntry,
 		},
 	})
 	if err != nil {

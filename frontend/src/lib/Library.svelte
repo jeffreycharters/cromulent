@@ -16,7 +16,7 @@
 
     import { dndzone } from "svelte-dnd-action";
     import {
-        UpdateDisplayOrder,
+        UpdateDisplayOrders,
         ListUsedMMAIDs,
     } from "../../wailsjs/go/handlers/MMAHandler";
 
@@ -162,6 +162,18 @@
         }
     }
 
+    async function handleDndFinalize(e: CustomEvent) {
+        draggableAnalytes = e.detail.items;
+        try {
+            const ids = draggableAnalytes.map((a) => a.id);
+            const orders = draggableAnalytes.map((_, i) => i);
+            await UpdateDisplayOrders(ids, orders);
+            mmas = await ListAllMMAs();
+        } catch (e: any) {
+            error = e.toString();
+        }
+    }
+
     interface MMAMaterialGroup {
         materialName: string;
         analytes: any[];
@@ -229,21 +241,6 @@
     function handleDndConsider(e: CustomEvent) {
         draggableAnalytes = e.detail.items;
     }
-
-    async function handleDndFinalize(e: CustomEvent) {
-        draggableAnalytes = e.detail.items;
-        try {
-            await Promise.all(
-                draggableAnalytes.map((item, index) =>
-                    UpdateDisplayOrder(item.id, index),
-                ),
-            );
-            mmas = await ListAllMMAs();
-        } catch (e: any) {
-            error = e.toString();
-        }
-    }
-
     async function addAnalyteToCurrentCombo() {
         if (!selectedMethodID || !selectedMaterialID || !addingAnalyteID)
             return;
