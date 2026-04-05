@@ -48,3 +48,42 @@ type ComboAnalyte struct {
 	Unit         string `json:"unit"`
 	DisplayOrder int    `json:"display_order"`
 }
+
+type ControlLimitRegion struct {
+	ID                    int64    `json:"id"`
+	MMAID                 int64    `json:"mma_id"`
+	Mean                  float64  `json:"mean"`
+	UCL                   float64  `json:"ucl"`
+	LCL                   float64  `json:"lcl"`
+	UWL                   *float64 `json:"uwl"`
+	LWL                   *float64 `json:"lwl"`
+	UIL                   *float64 `json:"uil"`
+	LIL                   *float64 `json:"lil"`
+	EffectiveFromSequence int      `json:"effective_from_sequence"`
+	CreatedBy             int64    `json:"created_by"`
+	CreatedAt             string   `json:"created_at"`
+}
+
+type MeasurementResult struct {
+	MMAID          int64    `json:"mma_id"`
+	AnalyteName    string   `json:"analyte_name"`
+	Unit           string   `json:"unit"`
+	Value          float64  `json:"value"`
+	SequenceNumber int      `json:"sequence_number"`
+	UCL            *float64 `json:"ucl"`
+	LCL            *float64 `json:"lcl"`
+	Pass           bool     `json:"pass"`
+	NoLimits       bool     `json:"no_limits"`
+}
+
+type ChartPoint struct {
+	SequenceNumber int      `json:"sequence_number"`
+	Value          float64  `json:"value"`
+	Mean           *float64 `json:"mean"`
+	UCL            *float64 `json:"ucl"`
+	LCL            *float64 `json:"lcl"`
+	UWL            *float64 `json:"uwl"`
+	LWL            *float64 `json:"lwl"`
+	UIL            *float64 `json:"uil"`
+	LIL            *float64 `json:"lil"`
+}

@@ -158,12 +158,18 @@ func (h *MMAHandler) ListUsedMMAIDs() ([]int64, error) {
 	return ids, rows.Err()
 }
 
-func (h *MMAHandler) DeactivateMMA(id int64) error {
-	_, err := db.DB.Exec(`UPDATE material_method_analytes SET active = 0 WHERE id = ?`, id)
+func (h *MMAHandler) DeactivateCombo(materialID, methodID int64) error {
+	_, err := db.DB.Exec(
+		`UPDATE material_method_analytes SET active = 0 WHERE material_id = ? AND method_id = ?`,
+		materialID, methodID,
+	)
 	return err
 }
 
-func (h *MMAHandler) ActivateMMA(id int64) error {
-	_, err := db.DB.Exec(`UPDATE material_method_analytes SET active = 1 WHERE id = ?`, id)
+func (h *MMAHandler) ActivateCombo(materialID, methodID int64) error {
+	_, err := db.DB.Exec(
+		`UPDATE material_method_analytes SET active = 1 WHERE material_id = ? AND method_id = ?`,
+		materialID, methodID,
+	)
 	return err
 }

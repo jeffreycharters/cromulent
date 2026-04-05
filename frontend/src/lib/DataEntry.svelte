@@ -4,6 +4,7 @@
         ListMethodsWithMaterials,
         GetAnalytesForCombo,
         SaveChart,
+        GetChartResults,
     } from "../../wailsjs/go/handlers/DataEntryHandler";
 
     export let currentUser: any;
@@ -23,13 +24,21 @@
         unit: string;
         display_order: number;
     }
+    interface MeasurementResult {
+        mma_id: number;
+        value: number;
+        ucl: number | null;
+        lcl: number | null;
+        pass: boolean;
+        no_limits: boolean;
+    }
 
     let methods: Method[] = [];
     let selectedMethodID: number | null = null;
     let selectedMaterialID: number | null = null;
     let analytes: ComboAnalyte[] = [];
     let values: Record<number, string> = {};
-    let showHidden = false;
+    let results: Record<string, MeasurementResult> = {};
     let error = "";
     let success = "";
     let saving = false;
@@ -48,6 +57,7 @@
         selectedMethodID = methodID;
         selectedMaterialID = materialID;
         values = {};
+        results = {};
         try {
             analytes = (await GetAnalytesForCombo(methodID, materialID)) ?? [];
         } catch (e: any) {
@@ -62,7 +72,6 @@
 
         const html = e.clipboardData?.getData("text/html") ?? "";
         if (html) {
-            // Parse table cells out of the HTML
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, "text/html");
             const cells = doc.querySelectorAll("td, th");
@@ -73,14 +82,11 @@
             }
         }
 
-        // Fall back to plain text if HTML parse yielded nothing
         if (parts.length === 0) {
             const text = e.clipboardData?.getData("text/plain") ?? "";
             const firstRow = text.split(/\r?\n/)[0];
             parts = firstRow.trim().split("\t");
         }
-
-        console.log("parts:", JSON.stringify(parts));
 
         const next = { ...values };
         parts.forEach((part, offset) => {
@@ -94,7 +100,6 @@
         values = next;
     }
 
-    // --- Save ---
     async function save() {
         if (!selectedMethodID || !selectedMaterialID) return;
         const hasValues = Object.keys(values).length > 0;
@@ -104,20 +109,23 @@
         }
         saving = true;
         error = "";
+        results = {};
         try {
             const payload: Record<string, number> = {};
             for (const [k, v] of Object.entries(values)) {
                 if (v !== "") payload[k] = parseFloat(v);
             }
-            await SaveChart(
+            const chartID = await SaveChart(
                 selectedMethodID,
                 selectedMaterialID,
                 currentUser.id,
                 payload,
             );
-            success = "Chart saved.";
+            const raw = (await GetChartResults(chartID)) ?? [];
+            results = Object.fromEntries(
+                raw.map((r) => [r.mma_id, r]),
+            ) as Record<string, MeasurementResult>;
             values = {};
-            setTimeout(() => (success = ""), 3000);
         } catch (e: any) {
             error = e.toString();
         } finally {
@@ -158,9 +166,6 @@
                 <button on:click={() => (error = "")}>✕</button>
             </div>
         {/if}
-        {#if success}
-            <div class="banner success">{success}</div>
-        {/if}
 
         {#if !selectedMethodID}
             <div class="empty-state">
@@ -200,20 +205,40 @@
 
             <div class="grid">
                 {#each analytes as a, i}
-                    <div class="analyte-card">
+                    {@const result = results[a.mma_id]}
+                    <div
+                        class="analyte-card"
+                        class:pass={result && !result.no_limits && result.pass}
+                        class:fail={result && !result.no_limits && !result.pass}
+                    >
                         <div class="card-header">
                             <span class="analyte-name">{a.name}</span>
                             <span class="analyte-unit">{a.unit}</span>
                         </div>
-                        <input
-                            type="text"
-                            bind:value={values[a.mma_id]}
-                            placeholder="—"
-                            class="value-input"
-                            class:filled={values[a.mma_id] !== undefined &&
-                                values[a.mma_id] !== ""}
-                            on:paste={(e) => handleCellPaste(e, i)}
-                        />
+                        {#if result}
+                            <span class="result-value">{result.value}</span>
+                            {#if result.no_limits}
+                                <span class="result-badge no-limits"
+                                    >No limits</span
+                                >
+                            {:else if result.pass}
+                                <span class="result-badge pass-badge">Pass</span
+                                >
+                            {:else}
+                                <span class="result-badge fail-badge">Fail</span
+                                >
+                            {/if}
+                        {:else}
+                            <input
+                                type="text"
+                                bind:value={values[a.mma_id]}
+                                placeholder="—"
+                                class="value-input"
+                                class:filled={values[a.mma_id] !== undefined &&
+                                    values[a.mma_id] !== ""}
+                                on:paste={(e) => handleCellPaste(e, i)}
+                            />
+                        {/if}
                     </div>
                 {/each}
             </div>
@@ -329,6 +354,17 @@
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
+        transition:
+            border-color 0.15s,
+            background 0.15s;
+    }
+    .analyte-card.pass {
+        border-color: var(--colour-success);
+        background: color-mix(in srgb, var(--colour-success) 6%, transparent);
+    }
+    .analyte-card.fail {
+        border-color: var(--colour-danger);
+        background: color-mix(in srgb, var(--colour-danger) 6%, transparent);
     }
     .card-header {
         display: flex;
@@ -359,6 +395,28 @@
     .value-input::placeholder {
         color: var(--colour-border);
     }
+    .result-value {
+        font-family: var(--font-mono);
+        font-size: 0.9rem;
+        font-weight: 600;
+        padding: 0.25rem 0;
+    }
+    .result-badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.1rem 0;
+    }
+    .pass-badge {
+        color: var(--colour-success);
+    }
+    .fail-badge {
+        color: var(--colour-danger);
+    }
+    .no-limits {
+        color: var(--colour-text-muted);
+    }
     .empty-state {
         height: 100%;
         display: flex;
@@ -381,12 +439,6 @@
         color: var(--colour-danger);
         border: 1px solid
             color-mix(in srgb, var(--colour-danger) 30%, transparent);
-    }
-    .banner.success {
-        background: color-mix(in srgb, var(--colour-success) 12%, transparent);
-        color: var(--colour-success);
-        border: 1px solid
-            color-mix(in srgb, var(--colour-success) 30%, transparent);
     }
     .empty {
         font-size: 0.8rem;

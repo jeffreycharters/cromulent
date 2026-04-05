@@ -7,6 +7,9 @@
 
     const dispatch = createEventDispatcher();
 
+    let contentEl: HTMLElement;
+    $: if (view && contentEl) contentEl.scrollTop = 0;
+
     async function handleLogout() {
         await Logout();
         dispatch("logout");
@@ -66,7 +69,7 @@
         </div>
     </nav>
 
-    <main class="content">
+    <main class="content" bind:this={contentEl}>
         <slot />
     </main>
 </div>

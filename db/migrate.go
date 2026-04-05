@@ -161,4 +161,9 @@ CREATE TABLE IF NOT EXISTS spc_rule_sets (
 		version: 3,
 		sql:     `ALTER TABLE measurements ADD COLUMN sequence_number INTEGER;`,
 	},
+	{
+		version: 4,
+		sql: `ALTER TABLE control_limit_regions ADD COLUMN deleted_at DATETIME;
+    ALTER TABLE control_limit_regions ADD COLUMN deleted_by INTEGER REFERENCES users(id);`,
+	},
 }

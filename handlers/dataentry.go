@@ -140,3 +140,61 @@ func (h *DataEntryHandler) SaveChart(methodID, materialID, technicianID int64, v
 
 	return chartID, tx.Commit()
 }
+
+// GetChartResults returns pass/fail results for all measurements in a chart,
+// evaluated against the applicable control limit region for each MMA.
+func (h *DataEntryHandler) GetChartResults(chartID int64) ([]models.MeasurementResult, error) {
+	rows, err := db.DB.Query(`
+		SELECT
+			m.material_method_analyte_id,
+			a.name,
+			a.unit,
+			m.value,
+			m.sequence_number
+		FROM measurements m
+		JOIN material_method_analytes mma ON mma.id = m.material_method_analyte_id
+		JOIN analytes a ON a.id = mma.analyte_id
+		WHERE m.control_chart_id = ?
+		ORDER BY mma.display_order
+	`, chartID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []models.MeasurementResult
+	for rows.Next() {
+		var r models.MeasurementResult
+		if err := rows.Scan(&r.MMAID, &r.AnalyteName, &r.Unit, &r.Value, &r.SequenceNumber); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// For each measurement, find the applicable control limit region
+	for i, r := range results {
+		var ucl, lcl float64
+		err := db.DB.QueryRow(`
+			SELECT ucl, lcl
+			FROM control_limit_regions
+			WHERE material_method_analyte_id = ?
+			  AND effective_from_sequence <= ?
+			  AND deleted_at IS NULL
+			ORDER BY effective_from_sequence DESC
+			LIMIT 1
+		`, r.MMAID, r.SequenceNumber).Scan(&ucl, &lcl)
+		if err != nil {
+			// No limits found — mark as no limits, not a fail
+			results[i].NoLimits = true
+			continue
+		}
+		results[i].UCL = &ucl
+		results[i].LCL = &lcl
+		results[i].Pass = r.Value >= lcl && r.Value <= ucl
+	}
+
+	return results, nil
+}

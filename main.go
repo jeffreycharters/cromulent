@@ -22,7 +22,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		BackgroundColour: &options.RGBA{R: 228, G: 228, B: 228, A: 1},
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app,
@@ -32,6 +32,8 @@ func main() {
 			app.Library,
 			app.MMA,
 			app.DataEntry,
+			app.Limits,
+			app.ChartReview,
 		},
 	})
 	if err != nil {

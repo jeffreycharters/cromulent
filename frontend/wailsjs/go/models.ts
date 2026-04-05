@@ -34,6 +34,40 @@ export namespace models {
 	        this.display_order = source["display_order"];
 	    }
 	}
+	export class ControlLimitRegion {
+	    id: number;
+	    mma_id: number;
+	    mean: number;
+	    ucl: number;
+	    lcl: number;
+	    uwl?: number;
+	    lwl?: number;
+	    uil?: number;
+	    lil?: number;
+	    effective_from_sequence: number;
+	    created_by: number;
+	    created_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ControlLimitRegion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.mma_id = source["mma_id"];
+	        this.mean = source["mean"];
+	        this.ucl = source["ucl"];
+	        this.lcl = source["lcl"];
+	        this.uwl = source["uwl"];
+	        this.lwl = source["lwl"];
+	        this.uil = source["uil"];
+	        this.lil = source["lil"];
+	        this.effective_from_sequence = source["effective_from_sequence"];
+	        this.created_by = source["created_by"];
+	        this.created_at = source["created_at"];
+	    }
+	}
 	export class MMAEntry {
 	    id: number;
 	    material_id: number;
@@ -92,6 +126,34 @@ export namespace models {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	    }
+	}
+	export class MeasurementResult {
+	    mma_id: number;
+	    analyte_name: string;
+	    unit: string;
+	    value: number;
+	    sequence_number: number;
+	    ucl?: number;
+	    lcl?: number;
+	    pass: boolean;
+	    no_limits: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MeasurementResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mma_id = source["mma_id"];
+	        this.analyte_name = source["analyte_name"];
+	        this.unit = source["unit"];
+	        this.value = source["value"];
+	        this.sequence_number = source["sequence_number"];
+	        this.ucl = source["ucl"];
+	        this.lcl = source["lcl"];
+	        this.pass = source["pass"];
+	        this.no_limits = source["no_limits"];
 	    }
 	}
 	export class Method {

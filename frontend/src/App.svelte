@@ -75,7 +75,7 @@
         {:else if view === "chart-review"}
             <p>Chart review — todo</p>
         {:else if view === "library"}
-            <Library />
+            <Library {currentUser} />
         {:else if view === "admin"}
             <Admin {currentUser} />
         {:else if view === "settings"}

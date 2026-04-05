@@ -1,3 +1,4 @@
+```markdown
 # Cromulent — project memory document
 
 ## What is this
@@ -95,7 +96,7 @@ All roles can create methods, materials, analytes, and MMA combos. Trust model i
 
 ---
 
-## Database schema (migration v2)
+## Database schema (migration v4)
 
 ### Core lookup tables
 
@@ -112,10 +113,12 @@ All roles can create methods, materials, analytes, and MMA combos. Trust model i
 **`material_method_analytes`** — `id`, `material_id FK`, `method_id FK`, `analyte_id FK`, `display_order`, `active` (default 1)
 - UNIQUE(material_id, method_id, analyte_id)
 - The unique combination that owns its own control limits and measurement history
-- `active` allows soft-inactivation of retired combos
+- `active` allows soft-inactivation of retired combos — operates at combo level (all analytes), not per-analyte
 - No deletes once referenced by measurements (FK enforcement)
 
-**`control_limit_regions`** — `id`, `material_method_analyte_id FK`, `mean`, `ucl` (NOT NULL), `lcl` (NOT NULL), `uwl`, `lwl`, `uil`, `lil`, `effective_from_sequence`, `created_by FK`, `created_at`
+**`control_limit_regions`** — `id`, `material_method_analyte_id FK`, `mean`, `ucl` (NOT NULL), `lcl` (NOT NULL), `uwl`, `lwl`, `uil`, `lil`, `effective_from_sequence`, `created_by FK`, `created_at`, `deleted_at`, `deleted_by FK`
+- Soft delete only — `deleted_at`/`deleted_by` set on deletion, never hard deleted
+- This preserves audit trail; audit log view can query `deleted_at IS NOT NULL` later
 
 Three pairs of limits:
 - `ucl`/`lcl` — control limits (required, typically ±3 SD)
@@ -133,8 +136,10 @@ Limits versioned by sequence number. To find limits for sequence N: query where 
 
 **`chart_metadata_values`** — `id`, `control_chart_id FK`, `field_id FK`, `value`
 
-**`measurements`** — `id`, `control_chart_id FK`, `material_method_analyte_id FK`, `value`, `sequence_order`, `entered_by FK`, `entered_at`
-Append-only. No UPDATE statements ever issued against this table.
+**`measurements`** — `id`, `control_chart_id FK`, `material_method_analyte_id FK`, `value`, `sequence_order`, `sequence_number`, `entered_by FK`, `entered_at`
+- `sequence_order` — column position within a chart (instrument order)
+- `sequence_number` — immutable per-MMA run number, computed at insert time via `COALESCE(MAX(sequence_number), 0) + 1` inside the SaveChart transaction
+- Append-only. No UPDATE statements ever issued against this table.
 
 **`comments`** — `id`, `control_chart_id FK`, `measurement_id FK` (nullable), `comment_type`, `text`, `user_id FK`, `created_at`
 
@@ -146,8 +151,11 @@ Append-only. No UPDATE statements ever issued against this table.
 
 - **No SvelteKit** — plain Svelte with top-level `let view = 'login'` for navigation
 - **Append-only measurements** — data integrity enforced architecturally, not by policy
+- **sequence_number** — per-MMA immutable run number on measurements, used as x-axis on charts and paperwork reference
+- **sequence_order** — instrument column order within a chart, separate from sequence_number
 - **Hybrid metadata** — `technician_id` is a proper FK, everything else flexible via metadata tables
-- **Control limit regions** — versioned per `material_method_analyte` by sequence number
+- **Control limit regions** — versioned per `material_method_analyte` by sequence number, soft-deleted only
+- **No pass/fail shown live during data entry** — deliberate, prevents pressure to fudge values before saving; shown after save only
 - **SQLite over Postgres** — IT won't support a Postgres server; WAL mode acceptable at 2-3 users
 - **Atkinson Hyperlegible Next** — bundled font for readability; Mono variant for data display
 - **No Jet/sqlx** — plain `database/sql`; schema is simple enough, overhead not worth it
@@ -157,6 +165,9 @@ Append-only. No UPDATE statements ever issued against this table.
 - **Go slices serialize as null** — empty slices from Go come back as `null` in JS, always use `?? []` on list results
 - **Clipboard parsing** — LibreOffice Calc puts data as `text/html`, not `text/plain`. Parse HTML table cells via `DOMParser` first, fall back to tab-split plain text. Excel also uses HTML format so this handles both.
 - **Decimal separator** — regex currently only accepts `.` as decimal separator. Locale issues deferred until if/when needed.
+- **No LATERAL joins** — SQLite doesn't support them; use correlated subqueries instead
+- **Combo-level deactivation** — DeactivateCombo/ActivateCombo operate on all analytes for a method+material at once
+- **Chart data limit** — default 50 points, user-adjustable input; limit <= 0 means no limit in handler
 
 ---
 
@@ -193,53 +204,39 @@ const (
 
 ### `models/library.go`
 ```go
-type Analyte struct {
-    ID   int64  `json:"id"`
-    Name string `json:"name"`
-    Unit string `json:"unit"`
-}
-
-type Method struct {
-    ID          int64  `json:"id"`
-    Name        string `json:"name"`
-    Description string `json:"description"`
-}
-
-type Material struct {
-    ID          int64  `json:"id"`
-    Name        string `json:"name"`
-    Description string `json:"description"`
-}
+type Analyte struct { ID int64; Name string; Unit string }
+type Method struct { ID int64; Name string; Description string }
+type Material struct { ID int64; Name string; Description string }
 
 type MMAEntry struct {
-    ID           int64  `json:"id"`
-    MaterialID   int64  `json:"material_id"`
-    MaterialName string `json:"material_name"`
-    MethodID     int64  `json:"method_id"`
-    MethodName   string `json:"method_name"`
-    AnalyteID    int64  `json:"analyte_id"`
-    AnalyteName  string `json:"analyte_name"`
-    Unit         string `json:"unit"`
-    DisplayOrder int    `json:"display_order"`
-    Active       int    `json:"active"`
+    ID int64; MaterialID int64; MaterialName string
+    MethodID int64; MethodName string
+    AnalyteID int64; AnalyteName string
+    Unit string; DisplayOrder int; Active bool
 }
 
-type MethodWithMaterials struct {
-    ID        int64             `json:"id"`
-    Name      string            `json:"name"`
-    Materials []MaterialSummary `json:"materials"`
+type MethodWithMaterials struct { ID int64; Name string; Materials []MaterialSummary }
+type MaterialSummary struct { ID int64; Name string }
+type ComboAnalyte struct { MMAID int64; Name string; Unit string; DisplayOrder int }
+
+type ControlLimitRegion struct {
+    ID int64; MMAID int64
+    Mean float64; UCL float64; LCL float64
+    UWL *float64; LWL *float64; UIL *float64; LIL *float64
+    EffectiveFromSequence int; CreatedBy int64; CreatedAt string
 }
 
-type MaterialSummary struct {
-    ID   int64  `json:"id"`
-    Name string `json:"name"`
+type MeasurementResult struct {
+    MMAID int64; AnalyteName string; Unit string
+    Value float64; SequenceNumber int
+    UCL *float64; LCL *float64
+    Pass bool; NoLimits bool
 }
 
-type ComboAnalyte struct {
-    MMAID        int64  `json:"mma_id"`
-    Name         string `json:"name"`
-    Unit         string `json:"unit"`
-    DisplayOrder int    `json:"display_order"`
+type ChartPoint struct {
+    SequenceNumber int; Value float64
+    Mean *float64; UCL *float64; LCL *float64
+    UWL *float64; LWL *float64; UIL *float64; LIL *float64
 }
 ```
 
@@ -283,15 +280,25 @@ type ComboAnalyte struct {
 - `ListMMAsForMethod(methodID int64) ([]models.MMAEntry, error)`
 - `ListAllMMAs() ([]models.MMAEntry, error)`
 - `RemoveAnalyteFromMMA(id int64) error`
-- `UpdateDisplayOrders(ids []int64, orders []int) error` — single transaction
+- `UpdateDisplayOrders(ids []int64, orders []int) error`
 - `ListUsedMMAIDs() ([]int64, error)`
-- `DeactivateMMA(id int64) error`
-- `ActivateMMA(id int64) error`
+- `DeactivateCombo(materialID, methodID int64) error`
+- `ActivateCombo(materialID, methodID int64) error`
 
 ### `handlers/dataentry.go` — `app.DataEntry`
-- `ListMethodsWithMaterials() ([]models.MethodWithMaterials, error)` — active combos only, for sidebar
+- `ListMethodsWithMaterials() ([]models.MethodWithMaterials, error)` — active combos only
 - `GetAnalytesForCombo(methodID, materialID int64) ([]models.ComboAnalyte, error)`
-- `SaveChart(methodID, materialID, technicianID int64, values map[string]float64) (int64, error)` — single transaction, sets locked_at immediately
+- `SaveChart(methodID, materialID, technicianID int64, values map[string]float64) (int64, error)` — single transaction, sets locked_at immediately, computes sequence_number per MMA
+- `GetChartResults(chartID int64) ([]models.MeasurementResult, error)` — pass/fail per analyte after save
+
+### `handlers/limits.go` — `app.Limits`
+- `GetCurrentSequencesForMMAs(ids []int64) (map[int64]int, error)`
+- `SaveControlLimitRegions(regions []models.ControlLimitRegion) error`
+- `ListControlLimitRegionsForCombo(materialID, methodID int64) ([]models.ControlLimitRegion, error)`
+- `DeleteControlLimitRegionSet(materialID, methodID int64, effectiveFromSequence int, userID int64) error`
+
+### `handlers/chartreview.go` — `app.ChartReview`
+- `GetComboChartData(materialID, methodID int64, limit int) (map[int64][]models.ChartPoint, error)` — correlated subqueries for limit lookup per point, limit <= 0 means no limit
 
 ---
 
@@ -304,14 +311,15 @@ frontend/src/
 ├── style.css               — global styles, CSS vars, font-face declarations
 ├── assets/fonts/           — Atkinson Hyperlegible Next + Mono woff2 files
 └── lib/
-    ├── Login.svelte        — login form, dispatches 'success' with UserResponse
-    ├── Setup.svelte        — first-run admin account creation, dispatches 'done'
-    ├── Shell.svelte        — navbar + content slot, role-filtered nav, dispatches 'logout'/'navigate'
-    ├── Admin.svelte        — user management (create, activate, deactivate)
-    ├── DBPicker.svelte     — open existing or create new DB on first launch
-    ├── Settings.svelte     — change DB path with logout warning
-    ├── Library.svelte      — tabbed config: Analytes, Methods, Materials, Combos, (Limits — todo)
-    └── DataEntry.svelte    — sidebar + analyte card grid + paste handling + save
+    ├── Login.svelte
+    ├── Setup.svelte
+    ├── Shell.svelte        — navbar + content slot, resets scroll on view change via bind:this
+    ├── Admin.svelte
+    ├── DBPicker.svelte
+    ├── Settings.svelte
+    ├── Library.svelte      — tabbed: Analytes, Methods, Materials, Combos, Limits
+    ├── DataEntry.svelte    — sidebar + grid + paste + save + post-save pass/fail display
+    └── ChartReview.svelte  — todo
 ```
 
 ### View routing in `App.svelte`
@@ -320,17 +328,10 @@ frontend/src/
 - `setup` → first run only
 - `login` → standard login
 - `data-entry` → technician/all roles
-- `chart-review` → reviewer/supervisor/admin (todo)
+- `chart-review` → reviewer/supervisor/admin
 - `library` → all roles
 - `admin` → admin only
 - `settings` → all roles
-
-### Nav items in `Shell.svelte`
-- Data Entry — all roles
-- Chart Review — reviewer, supervisor, admin
-- Library — all roles
-- Admin — admin only
-- Settings — all roles
 
 ### CSS variables (in `style.css`)
 ```css
@@ -347,22 +348,44 @@ frontend/src/
 
 ## Library.svelte notes
 
-- Tabs: Analytes, Methods, Materials, Combos
+- Tabs: Analytes, Methods, Materials, Combos, Limits
 - All Go list calls return null for empty slices — always `?? []`
-- Combos tab: reactive on method → material selection; analyte list is drag-to-reorder via `svelte-dnd-action`
+- Combos tab: method selector → material selector (all materials shown, filtered by showHidden for inactive)
+- `comboActiveForMat(matID)` — returns true if no combo exists yet (unlinked), or if combo is active
+- `showHidden` checkbox shows inactive combos in material dropdown with `(inactive)` label
+- Deactivate/Activate operates at combo level via `DeactivateCombo`/`ActivateCombo`
+- Analyte list is drag-to-reorder via `svelte-dnd-action`
 - Reorder fires `UpdateDisplayOrders` in a single transaction
 - Remove button hidden if MMA has any measurements (`usedMMAIDs` set)
-- Deactivate not yet implemented in UI (backend ready: `DeactivateMMA`, `ActivateMMA`)
-- "Show hidden" checkbox in sidebar — not yet implemented
+- Limits tab: combo cards → select combo → shows existing region sets + new paste grid
+- Existing regions grouped by `effective_from_sequence`, each deletable (soft delete)
+- New region: 7-row × N-analyte paste grid, 2D anchor (fills right and down from paste cell)
+- `newGrid` initialized reactively when `limitAnalytes.length > 0`
+- `Object.entries(groupedRegions)` types values as `unknown` — cast inside `getRegionValue(regions: unknown)`
 
 ## DataEntry.svelte notes
 
-- Sidebar: methods as labels, materials as buttons, active combos only
-- Grid: wrapping flex of analyte cards (name + unit header, input below) — handles wide methods gracefully
-- Paste: intercepts `ClipboardEvent` on each input, parses from that cell forward
-- Clipboard parsing: tries `text/html` first (DOMParser, handles Calc/Excel), falls back to tab-split plain text
-- Non-numeric values and values with trailing chars (e.g. `0.02u`) are left blank
-- Save: single transaction, locked_at set immediately — immutable from creation
+- Sidebar: methods as labels, materials as buttons, active combos only (from ListMethodsWithMaterials)
+- Grid: wrapping flex of analyte cards
+- Paste: 1D, fills right from anchor cell using HTML-first clipboard parsing
+- After save: cards show result value + Pass/Fail/No limits badge, colored border
+- Results cleared on combo change or new save
+- `results` typed as `Record<string, MeasurementResult>` (Object.fromEntries always gives string keys)
+
+## Shell.svelte notes
+- `bind:this={contentEl}` on `.content` div
+- `$: if (view && contentEl) contentEl.scrollTop = 0` resets scroll on navigate
+
+---
+
+## Migrations
+
+- v1 — full initial schema
+- v2 — `ALTER TABLE material_method_analytes ADD COLUMN active INTEGER NOT NULL DEFAULT 1`
+- v3 — `ALTER TABLE measurements ADD COLUMN sequence_number INTEGER`
+- v4 — `ALTER TABLE control_limit_regions ADD COLUMN deleted_at DATETIME; ALTER TABLE control_limit_regions ADD COLUMN deleted_by INTEGER REFERENCES users(id)`
+
+Plan: merge all into single v1 migration before release — easy cleanup task.
 
 ---
 
@@ -372,43 +395,44 @@ frontend/src/
 - [x] pnpm configured in wails.json
 - [x] Go 1.26, modernc.org/sqlite, golang.org/x/crypto/bcrypt
 - [x] DB init with WAL mode + foreign keys + busy timeout
-- [x] Versioned migrations via PRAGMA user_version (v2)
+- [x] Versioned migrations via PRAGMA user_version (v4)
 - [x] Full schema
 - [x] Auth handler with session timeout (30 min)
 - [x] Role-based post-login routing
 - [x] First-run setup screen
 - [x] Login screen
-- [x] App shell with role-filtered navbar
+- [x] App shell with role-filtered navbar, scroll reset on navigate
 - [x] Admin user management screen
-- [x] config package (%APPDATA%/Cromulent on Windows, ~/.config/Cromulent on Linux)
-- [x] ConfigHandler with GetDBPath, InitDB, OpenDBFilePicker, OpenDBFolderPicker, SetDBPath
-- [x] DBPicker.svelte — open existing or create new DB on first launch
-- [x] Settings.svelte — change DB path with logout warning
-- [x] Library.svelte — analytes, methods, materials CRUD + MMA combo wiring with drag-to-reorder
-- [x] DataEntry.svelte — sidebar, analyte card grid, clipboard paste, save with transaction
-- [x] MMA active/inactive column (backend ready, UI deactivation not yet wired)
+- [x] config package
+- [x] ConfigHandler
+- [x] DBPicker.svelte
+- [x] Settings.svelte
+- [x] Library.svelte — analytes, methods, materials CRUD + MMA combo wiring + drag-to-reorder + deactivate/activate combo + show hidden toggle + control limits tab with paste grid + soft delete
+- [x] DataEntry.svelte — sidebar, analyte card grid, clipboard paste, save, post-save pass/fail
+- [x] ChartReviewHandler.GetComboChartData — Go handler written, not yet wired to frontend
 
 ## What's next
 
-1. Control limits tab in Library (paste from Excel — 7-row format: UCL, UWL, UIL, Mean, LIL, LWL, LCL × analyte columns)
-2. Show limit pass/fail in data entry grid after save (or live?)
-3. "Show hidden" toggle in Library combos sidebar
-4. Deactivate MMA button in Library combos (backend ready)
-5. XmR individuals control charts with Chart.js (chart review view)
-6. Trend detection against spc_rule_sets
-7. Comment/annotation system
-8. Audit log view
+1. ChartReview.svelte — XmR individuals control charts with Chart.js
+   - Combo card picker (same pattern as limits tab)
+   - Per-analyte X chart + mR chart stacked
+   - Limit lines via chartjs-plugin-annotation
+   - Point limit input (default 50, user-adjustable)
+2. Trend detection against spc_rule_sets
+3. Comment/annotation system
+4. Audit log view
 
 ---
 
 ## Planned build order (revised)
 
-1. ~~Wails init with plain Svelte template~~ ✅
+1. ~~Wails init~~ ✅
 2. ~~SQLite setup + migrations~~ ✅
-3. ~~Auth (login screen, session timeout)~~ ✅
-4. ~~Library setup (analytes, methods, materials, MMA combos)~~ ✅
-5. ~~Data entry (grid + clipboard paste)~~ ✅
-6. Control limits setup (Library tab, paste from Excel)
-7. XmR control charts (chart review view)
+3. ~~Auth~~ ✅
+4. ~~Library setup~~ ✅
+5. ~~Data entry~~ ✅
+6. ~~Control limits setup~~ ✅
+7. XmR control charts ← current
 8. Comment/annotation system
 9. Audit log view
+```

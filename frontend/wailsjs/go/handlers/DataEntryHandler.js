@@ -6,6 +6,10 @@ export function GetAnalytesForCombo(arg1, arg2) {
   return window['go']['handlers']['DataEntryHandler']['GetAnalytesForCombo'](arg1, arg2);
 }
 
+export function GetChartResults(arg1) {
+  return window['go']['handlers']['DataEntryHandler']['GetChartResults'](arg1);
+}
+
 export function ListMethodsWithMaterials() {
   return window['go']['handlers']['DataEntryHandler']['ListMethodsWithMaterials']();
 }

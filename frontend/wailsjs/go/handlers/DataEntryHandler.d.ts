@@ -4,6 +4,8 @@ import {models} from '../models';
 
 export function GetAnalytesForCombo(arg1:number,arg2:number):Promise<Array<models.ComboAnalyte>>;
 
+export function GetChartResults(arg1:number):Promise<Array<models.MeasurementResult>>;
+
 export function ListMethodsWithMaterials():Promise<Array<models.MethodWithMaterials>>;
 
 export function SaveChart(arg1:number,arg2:number,arg3:number,arg4:Record<string, number>):Promise<number>;
