@@ -157,4 +157,8 @@ CREATE TABLE IF NOT EXISTS spc_rule_sets (
 		version: 2,
 		sql:     `ALTER TABLE material_method_analytes ADD COLUMN active INTEGER NOT NULL DEFAULT 1;`,
 	},
+	{
+		version: 3,
+		sql:     `ALTER TABLE measurements ADD COLUMN sequence_number INTEGER;`,
+	},
 }

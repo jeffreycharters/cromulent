@@ -117,10 +117,21 @@ func (h *DataEntryHandler) SaveChart(methodID, materialID, technicianID int64, v
 	for mmaIDStr, value := range values {
 		var mmaID int64
 		fmt.Sscanf(mmaIDStr, "%d", &mmaID)
-		_, err := tx.Exec(`
-			INSERT INTO measurements (control_chart_id, material_method_analyte_id, value, sequence_order, entered_by, entered_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, chartID, mmaID, value, seq, technicianID, now)
+
+		var seqNum int
+		err := tx.QueryRow(`
+			SELECT COALESCE(MAX(sequence_number), 0) + 1
+			FROM measurements
+			WHERE material_method_analyte_id = ?
+		`, mmaID).Scan(&seqNum)
+		if err != nil {
+			return 0, fmt.Errorf("compute sequence_number: %w", err)
+		}
+
+		_, err = tx.Exec(`
+			INSERT INTO measurements (control_chart_id, material_method_analyte_id, value, sequence_order, sequence_number, entered_by, entered_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, chartID, mmaID, value, seq, seqNum, technicianID, now)
 		if err != nil {
 			return 0, fmt.Errorf("insert measurement: %w", err)
 		}
