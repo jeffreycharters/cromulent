@@ -34,6 +34,30 @@ export namespace models {
 	        this.display_order = source["display_order"];
 	    }
 	}
+	export class CommentResponse {
+	    id: number;
+	    control_chart_id: number;
+	    measurement_id?: number;
+	    text: string;
+	    user_id: number;
+	    username: string;
+	    created_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommentResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.control_chart_id = source["control_chart_id"];
+	        this.measurement_id = source["measurement_id"];
+	        this.text = source["text"];
+	        this.user_id = source["user_id"];
+	        this.username = source["username"];
+	        this.created_at = source["created_at"];
+	    }
+	}
 	export class ControlLimitRegion {
 	    id: number;
 	    mma_id: number;

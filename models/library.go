@@ -77,13 +77,15 @@ type MeasurementResult struct {
 }
 
 type ChartPoint struct {
-	SequenceNumber int      `json:"sequence_number"`
-	Value          float64  `json:"value"`
-	Mean           *float64 `json:"mean"`
-	UCL            *float64 `json:"ucl"`
-	LCL            *float64 `json:"lcl"`
-	UWL            *float64 `json:"uwl"`
-	LWL            *float64 `json:"lwl"`
-	UIL            *float64 `json:"uil"`
-	LIL            *float64 `json:"lil"`
+    MeasurementID  int64	`json:"measurement_id"`
+    ControlChartID int64	`json:"control_chart_id"`
+    SequenceNumber int		`json:"sequence_number"`
+    Value          float64	`json:"value"`
+    Mean           *float64	`json:"mean"`
+    UCL            *float64	`json:"ucl"`
+    LCL            *float64	`json:"lcl"`
+    UWL            *float64	`json:"uwl"`
+    LWL            *float64	`json:"lwl"`
+    UIL            *float64	`json:"uil"`
+    LIL            *float64	`json:"lil"`
 }

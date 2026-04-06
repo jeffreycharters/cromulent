@@ -134,7 +134,6 @@ CREATE TABLE IF NOT EXISTS comments (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     control_chart_id INTEGER NOT NULL REFERENCES control_charts(id),
     measurement_id   INTEGER REFERENCES measurements(id),
-    comment_type     TEXT NOT NULL,
     text             TEXT NOT NULL,
     user_id          INTEGER NOT NULL REFERENCES users(id),
     created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

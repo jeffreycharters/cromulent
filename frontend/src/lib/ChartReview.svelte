@@ -8,14 +8,46 @@
         GetAnalytesForCombo,
     } from "../../wailsjs/go/handlers/DataEntryHandler";
     import { GetComboChartData } from "../../wailsjs/go/handlers/ChartReviewHandler";
+    import {
+        GetCommentsForCombo,
+        AddComment,
+    } from "../../wailsjs/go/handlers/CommentsHandler";
 
-    Chart.register(...registerables, annotationPlugin);
+    // --- custom plugin: draws limit lines without annotation plugin hit detection ---
+
+    const limitLinesPlugin = {
+        id: "limitLines",
+        afterDatasetsDraw(chart: any) {
+            const { ctx, chartArea, scales } = chart;
+            const lines = (chart.options.plugins?.limitLines as any)?.lines ?? [];
+            if (!lines.length) return;
+            ctx.save();
+            for (const line of lines) {
+                const y = scales.y.getPixelForValue(line.value);
+                if (y < chartArea.top || y > chartArea.bottom) continue;
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, y);
+                ctx.lineTo(chartArea.right, y);
+                ctx.strokeStyle = line.color;
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash(line.dash);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+            ctx.restore();
+        },
+    };
+
+    Chart.register(...registerables, annotationPlugin, limitLinesPlugin);
 
     // --- types ---
 
     type ComboAnalyte = models.ComboAnalyte;
+    type CommentResponse = models.CommentResponse;
 
     interface ChartPoint {
+        measurement_id: number;
+        control_chart_id: number;
         sequence_number: number;
         value: number;
         mean: number | null;
@@ -49,6 +81,18 @@
     let loading = false;
     let error = "";
     let showRawData = false;
+    let showOutliers = false;
+
+    export let currentUser: any;
+
+    let comments: CommentResponse[] = [];
+    let commentsByMeasurement: Record<number, CommentResponse[]> = {};
+    let commentsByChart: Record<number, CommentResponse[]> = {};
+
+    let modalOpen = false;
+    let modalPoint: ChartPoint | null = null;
+    let modalComment = "";
+    let savingComment = false;
 
     // --- lifecycle ---
 
@@ -87,19 +131,16 @@
         destroyCharts();
         chartData = {};
         analytes = [];
+        comments = [];
         try {
-            const [ana, data] = await Promise.all([
+            const [ana, data, cmts] = await Promise.all([
                 GetAnalytesForCombo(selectedMethodID, selectedMaterialID),
-                GetComboChartData(
-                    selectedMethodID,
-                    selectedMaterialID,
-                    pointLimit,
-                ),
+                GetComboChartData(selectedMethodID, selectedMaterialID, pointLimit),
+                GetCommentsForCombo(selectedMethodID, selectedMaterialID),
             ]);
-            analytes = (ana ?? []).sort(
-                (a, b) => a.display_order - b.display_order,
-            );
+            analytes = (ana ?? []).sort((a, b) => a.display_order - b.display_order);
             chartData = data ?? {};
+            comments = cmts ?? [];
         } catch (e: any) {
             error = e?.toString() ?? "Failed to load chart data";
         } finally {
@@ -117,8 +158,7 @@
     function buildCharts() {
         destroyCharts();
         for (const analyte of analytes) {
-            const points: ChartPoint[] =
-                chartData[String(analyte.mma_id)] ?? [];
+            const points: ChartPoint[] = chartData[String(analyte.mma_id)] ?? [];
             if (points.length === 0) continue;
 
             const labels = points.map((p) => String(p.sequence_number));
@@ -131,6 +171,7 @@
             const xCanvas = document.getElementById(
                 `chart-x-${analyte.mma_id}`,
             ) as HTMLCanvasElement | null;
+
             if (xCanvas) {
                 chartInstances[`${analyte.mma_id}-x`] = new Chart(xCanvas, {
                     type: "line",
@@ -142,19 +183,41 @@
                                 data: points.map((p) => p.value),
                                 borderColor: "var(--colour-primary)",
                                 backgroundColor: "transparent",
-                                pointRadius: 3,
                                 tension: 0,
                                 spanGaps: false,
+                                pointBackgroundColor: points.map((p) =>
+                                    commentsByMeasurement[p.measurement_id]?.length > 0
+                                        ? "#d69e2e"
+                                        : "var(--colour-primary)",
+                                ),
+                                pointRadius: points.map((p) =>
+                                    commentsByMeasurement[p.measurement_id]?.length > 0 ? 5 : 3,
+                                ),
                             },
                         ],
                     },
                     options: xChartOptions(points),
+                });
+
+                xCanvas.addEventListener("click", (e) => {
+                    const chart = chartInstances[`${analyte.mma_id}-x`];
+                    if (!chart) return;
+                    const elements = chart.getElementsAtEventForMode(
+                        e,
+                        "nearest",
+                        { intersect: false },
+                        false,
+                    );
+                    if (elements.length === 0) return;
+                    const idx = elements[0].index;
+                    if (idx < points.length) openModal(points[idx]);
                 });
             }
 
             const mrCanvas = document.getElementById(
                 `chart-mr-${analyte.mma_id}`,
             ) as HTMLCanvasElement | null;
+
             if (mrCanvas) {
                 chartInstances[`${analyte.mma_id}-mr`] = new Chart(mrCanvas, {
                     type: "line",
@@ -178,7 +241,7 @@
         }
     }
 
-    // --- chart options ---
+    // --- helpers ---
 
     function sigFigs(value: number, n = 3): string {
         if (value === 0) return "0";
@@ -194,64 +257,14 @@
         return (first.ucl! - first.lcl!) * 0.61;
     }
 
-    function annotationsForX(points: ChartPoint[], yMin: number, yMax: number) {
-        if (points.length === 0) return {};
-        const last = points[points.length - 1];
-        const lines: Record<string, any> = {};
-
-        const addLine = (
-            key: string,
-            value: number | null,
-            color: string,
-            dash: number[],
-        ) => {
-            if (value == null) return;
-            lines[key] = {
-                type: "line",
-                yMin: value,
-                yMax: value,
-                borderColor: color,
-                borderWidth: 1.5,
-                borderDash: dash,
-                label: { display: false },
-            };
-        };
-        addLine("mean", last.mean, "#888", []);
-        addLine("ucl", last.ucl, "#e53e3e", []);
-        addLine("lcl", last.lcl, "#e53e3e", []);
-        addLine("uwl", last.uwl, "#dd6b20", [4, 4]);
-        addLine("lwl", last.lwl, "#dd6b20", [4, 4]);
-        addLine("uil", last.uil, "#d69e2e", [2, 4]);
-        addLine("lil", last.lil, "#d69e2e", [2, 4]);
-
-        points.forEach((p, i) => {
-            if (p.value <= yMax && p.value >= yMin) return;
-            const isHigh = p.value > yMax;
-            lines[`outlier-${i}`] = {
-                type: "label",
-                xValue: String(p.sequence_number),
-                yValue: isHigh ? yMax : yMin,
-                content: [`${isHigh ? "▲" : "▼"} ${sigFigs(p.value)}`],
-                font: { family: "var(--font-mono)", size: 10 },
-                color: "var(--colour-danger)",
-                backgroundColor: "rgba(255,255,255,0.85)",
-                borderColor: "var(--colour-danger)",
-                borderWidth: 1,
-                borderRadius: 3,
-                padding: 4,
-                z: 100,
-                yAdjust: isHigh ? 16 : -16,
-            };
-        });
-
-        return lines;
-    }
+    // --- chart options ---
 
     function xChartOptions(points: ChartPoint[]) {
         if (points.length === 0) return {};
 
         const ucl = points.find((p) => p.ucl != null)?.ucl ?? null;
         const lcl = points.find((p) => p.lcl != null)?.lcl ?? null;
+        const last = points[points.length - 1];
 
         let yMin: number;
         let yMax: number;
@@ -269,25 +282,61 @@
             yMax = max + pad;
         }
 
+        // outlier label annotations — only shown when clamped
+        const annotations: Record<string, any> = {};
+        if (!showOutliers) {
+            points.forEach((p, i) => {
+                if (p.value <= yMax && p.value >= yMin) return;
+                const isHigh = p.value > yMax;
+                annotations[`outlier-${i}`] = {
+                    type: "label",
+                    xValue: String(p.sequence_number),
+                    yValue: isHigh ? yMax : yMin,
+                    content: [`${isHigh ? "▲" : "▼"} ${sigFigs(p.value)}`],
+                    font: { family: "var(--font-mono)", size: 10 },
+                    color: "var(--colour-danger)",
+                    backgroundColor: "rgba(255,255,255,0.85)",
+                    borderColor: "var(--colour-danger)",
+                    borderWidth: 1,
+                    borderRadius: 3,
+                    padding: 4,
+                    z: 100,
+                    yAdjust: isHigh ? 16 : -16,
+                };
+            });
+        }
+
         return {
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 0 },
             plugins: {
                 legend: { display: false },
-                annotation: {
-                    annotations: annotationsForX(points, yMin, yMax),
-                },
+                limitLines: {
+                    lines: [
+                        last.mean != null ? { value: last.mean, color: "#888", dash: [] } : null,
+                        last.ucl != null ? { value: last.ucl, color: "#e53e3e", dash: [] } : null,
+                        last.lcl != null ? { value: last.lcl, color: "#e53e3e", dash: [] } : null,
+                        last.uwl != null ? { value: last.uwl, color: "#dd6b20", dash: [4, 4] } : null,
+                        last.lwl != null ? { value: last.lwl, color: "#dd6b20", dash: [4, 4] } : null,
+                        last.uil != null ? { value: last.uil, color: "#d69e2e", dash: [2, 4] } : null,
+                        last.lil != null ? { value: last.lil, color: "#d69e2e", dash: [2, 4] } : null,
+                    ].filter(Boolean),
+                } as any,
+                annotation: { annotations },
             },
             scales: {
                 x: {
                     ticks: { font: { family: "var(--font-mono)", size: 11 } },
                 },
                 y: {
-                    min: yMin,
-                    max: yMax,
+                    ...(showOutliers ? {} : { min: yMin, max: yMax }),
                     ticks: { font: { family: "var(--font-mono)", size: 11 } },
                 },
+            },
+            interaction: {
+                mode: "nearest" as const,
+                intersect: false,
             },
         };
     }
@@ -301,18 +350,6 @@
             : ucl != null
               ? ucl * 1.3
               : undefined;
-
-        if (ucl != null) {
-            annotations["ucl"] = {
-                type: "line",
-                yMin: ucl,
-                yMax: ucl,
-                borderColor: "#e53e3e",
-                borderWidth: 1.5,
-                borderDash: [],
-                label: { display: false },
-            };
-        }
 
         if (yMax != null) {
             const mrValues = points.map((p, i) =>
@@ -344,6 +381,11 @@
             animation: { duration: 0 },
             plugins: {
                 legend: { display: false },
+                limitLines: {
+                    lines: [
+                        ucl != null ? { value: ucl, color: "#e53e3e", dash: [] } : null,
+                    ].filter(Boolean),
+                } as any,
                 annotation: { annotations },
             },
             scales: {
@@ -357,6 +399,68 @@
                 },
             },
         };
+    }
+
+    // --- modal ---
+
+    function openModal(point: ChartPoint) {
+        modalPoint = point;
+        modalComment = "";
+        modalOpen = true;
+    }
+
+    function closeModal() {
+        modalOpen = false;
+        modalPoint = null;
+        modalComment = "";
+    }
+
+    async function submitComment() {
+        if (!modalPoint || !modalComment.trim()) return;
+        savingComment = true;
+        try {
+            await AddComment(
+                modalPoint.control_chart_id,
+                modalPoint.measurement_id,
+                modalComment.trim(),
+                currentUser.id,
+            );
+            comments = (await GetCommentsForCombo(selectedMethodID!, selectedMaterialID!)) ?? [];
+            modalComment = "";
+        } catch (e: any) {
+            error = e?.toString() ?? "Failed to save comment";
+        } finally {
+            savingComment = false;
+        }
+    }
+
+    function limitContext(point: ChartPoint): string {
+        const { value, ucl, lcl, uwl, lwl, uil, lil, mean } = point;
+        if (ucl != null && value > ucl) return "Above UCL";
+        if (lcl != null && value < lcl) return "Below LCL";
+        if (uwl != null && value > uwl) return "Above UWL";
+        if (lwl != null && value < lwl) return "Below LWL";
+        if (uil != null && value > uil) return "Above UIL";
+        if (lil != null && value < lil) return "Below LIL";
+        if (mean != null && value > mean) return "Above mean";
+        if (mean != null && value < mean) return "Below mean";
+        return "At mean";
+    }
+
+    // --- reactive: index comments ---
+
+    $: {
+        commentsByMeasurement = {};
+        commentsByChart = {};
+        for (const c of comments) {
+            if (c.measurement_id != null) {
+                commentsByMeasurement[c.measurement_id] ??= [];
+                commentsByMeasurement[c.measurement_id].push(c);
+            } else {
+                commentsByChart[c.control_chart_id] ??= [];
+                commentsByChart[c.control_chart_id].push(c);
+            }
+        }
     }
 </script>
 
@@ -405,6 +509,12 @@
         {#if analytes.length > 0}
             <button
                 class="btn-secondary"
+                on:click={() => { showOutliers = !showOutliers; buildCharts(); }}
+            >
+                {showOutliers ? "Clamp chart" : "Show outliers"}
+            </button>
+            <button
+                class="btn-secondary"
                 on:click={() => (showRawData = !showRawData)}
             >
                 {showRawData ? "Show charts" : "Show data"}
@@ -432,13 +542,11 @@
                     <div class="chart-pair">
                         <div class="chart-wrap">
                             <span class="chart-label">X (Individuals)</span>
-                            <canvas id="chart-x-{analyte.mma_id}" height="200"
-                            ></canvas>
+                            <canvas id="chart-x-{analyte.mma_id}" height="200"></canvas>
                         </div>
                         <div class="chart-wrap mr">
                             <span class="chart-label">mR (Moving Range)</span>
-                            <canvas id="chart-mr-{analyte.mma_id}" height="120"
-                            ></canvas>
+                            <canvas id="chart-mr-{analyte.mma_id}" height="120"></canvas>
                         </div>
                     </div>
                 {/if}
@@ -463,12 +571,11 @@
                 </tr>
             </thead>
             <tbody>
-                {#each Array.from( { length: Math.max(...analytes.map((a) => (chartData[String(a.mma_id)] ?? []).length)) }, ) as _, i}
+                {#each Array.from({ length: Math.max(...analytes.map((a) => (chartData[String(a.mma_id)] ?? []).length)) }) as _, i}
                     <tr>
                         <td>{i + 1}</td>
                         {#each analytes as analyte}
-                            {@const p = (chartData[String(analyte.mma_id)] ??
-                                [])[i]}
+                            {@const p = (chartData[String(analyte.mma_id)] ?? [])[i]}
                             <td>{p != null ? sigFigs(p.value) : "—"}</td>
                             <td>{p?.mean != null ? sigFigs(p.mean) : "—"}</td>
                             <td>{p?.ucl != null ? sigFigs(p.ucl) : "—"}</td>
@@ -478,6 +585,63 @@
                 {/each}
             </tbody>
         </table>
+    </div>
+{/if}
+
+<!-- ── comment modal ──────────────────────────────────────────────────── -->
+{#if modalOpen && modalPoint}
+    <div class="modal-backdrop" on:click={closeModal}>
+        <div class="modal" on:click|stopPropagation>
+            <div class="modal-header">
+                <h3>Sequence #{modalPoint.sequence_number}</h3>
+                <button class="modal-close" on:click={closeModal}>✕</button>
+            </div>
+
+            <div class="modal-meta">
+                <span class="meta-value">{sigFigs(modalPoint.value)}</span>
+                <span class="meta-context">{limitContext(modalPoint)}</span>
+            </div>
+
+            {#if modalPoint.ucl != null}
+                <div class="modal-limits">
+                    <span>UCL {sigFigs(modalPoint.ucl)}</span>
+                    {#if modalPoint.uwl != null}<span>UWL {sigFigs(modalPoint.uwl)}</span>{/if}
+                    {#if modalPoint.uil != null}<span>UIL {sigFigs(modalPoint.uil)}</span>{/if}
+                    <span>Mean {sigFigs(modalPoint.mean ?? 0)}</span>
+                    {#if modalPoint.lil != null}<span>LIL {sigFigs(modalPoint.lil)}</span>{/if}
+                    {#if modalPoint.lwl != null}<span>LWL {sigFigs(modalPoint.lwl)}</span>{/if}
+                    <span>LCL {sigFigs(modalPoint.lcl)}</span>
+                </div>
+            {/if}
+
+            {#if (commentsByMeasurement[modalPoint.measurement_id] ?? []).length > 0}
+                <div class="modal-comments">
+                    <h4>Comments</h4>
+                    {#each commentsByMeasurement[modalPoint.measurement_id] as c}
+                        <div class="comment">
+                            <span class="comment-meta">{c.username} · {new Date(c.created_at).toLocaleString()}</span>
+                            <p class="comment-text">{c.text}</p>
+                        </div>
+                    {/each}
+                </div>
+            {/if}
+
+            <div class="modal-new-comment">
+                <textarea
+                    class="comment-input"
+                    bind:value={modalComment}
+                    placeholder="Add a comment…"
+                    rows="3"
+                />
+                <button
+                    class="btn-primary"
+                    disabled={!modalComment.trim() || savingComment}
+                    on:click={submitComment}
+                >
+                    {savingComment ? "Saving…" : "Add Comment"}
+                </button>
+            </div>
+        </div>
     </div>
 {/if}
 
@@ -495,7 +659,6 @@
     .picker-bar.secondary {
         background: var(--colour-bg);
     }
-
     .combo-list {
         display: flex;
         flex-wrap: wrap;
@@ -533,6 +696,7 @@
         color: var(--colour-text-muted);
     }
 
+    /* ── controls ── */
     select {
         font-family: var(--font-sans);
         font-size: 0.9rem;
@@ -579,7 +743,6 @@
         opacity: 0.5;
         cursor: default;
     }
-
     .btn-secondary {
         padding: 0.35rem 1rem;
         background: transparent;
@@ -676,5 +839,125 @@
     }
     .raw-table tr:last-child td {
         border-bottom: none;
+    }
+
+    /* ── modal ── */
+    .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    .modal {
+        background: var(--colour-surface);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        width: 420px;
+        max-width: 90vw;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        box-shadow: var(--shadow-md);
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .modal-header h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        margin: 0;
+    }
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1rem;
+        cursor: pointer;
+        color: var(--colour-text-muted);
+        padding: 0.25rem;
+    }
+    .modal-close:hover {
+        color: var(--colour-text);
+    }
+    .modal-meta {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+    }
+    .meta-value {
+        font-family: var(--font-mono);
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+    .meta-context {
+        font-size: 0.875rem;
+        color: var(--colour-text-muted);
+    }
+    .modal-limits {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+    .modal-limits span {
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        background: var(--colour-bg);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius);
+        padding: 0.2rem 0.5rem;
+        color: var(--colour-text-muted);
+    }
+    .modal-comments h4 {
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--colour-text-muted);
+        margin: 0 0 0.5rem;
+    }
+    .comment {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--colour-border);
+    }
+    .comment:last-child {
+        border-bottom: none;
+    }
+    .comment-meta {
+        font-size: 0.75rem;
+        color: var(--colour-text-muted);
+        font-family: var(--font-mono);
+    }
+    .comment-text {
+        font-size: 0.875rem;
+        margin: 0;
+    }
+    .modal-new-comment {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .comment-input {
+        width: 100%;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius);
+        padding: 0.5rem 0.75rem;
+        font-family: var(--font-sans);
+        font-size: 0.875rem;
+        color: var(--colour-text);
+        background: var(--colour-bg);
+        resize: vertical;
+        box-sizing: border-box;
+    }
+    .comment-input:focus {
+        outline: none;
+        border-color: var(--colour-primary);
     }
 </style>

@@ -7,6 +7,8 @@
         GetChartResults,
     } from "../../wailsjs/go/handlers/DataEntryHandler";
 
+    import { AddComment } from "../../wailsjs/go/handlers/CommentsHandler";
+
     export let currentUser: any;
 
     interface Material {
@@ -42,6 +44,9 @@
     let error = "";
     let success = "";
     let saving = false;
+    let chartID: number | null = null;
+    let commentText = "";
+    let savingComment = false;
 
     onMount(async () => {
         try {
@@ -63,6 +68,9 @@
         } catch (e: any) {
             error = e.toString();
         }
+
+        chartID = null;
+        commentText = "";
     }
 
     function handleCellPaste(e: ClipboardEvent, fromIndex: number) {
@@ -115,7 +123,7 @@
             for (const [k, v] of Object.entries(values)) {
                 if (v !== "") payload[k] = parseFloat(v);
             }
-            const chartID = await SaveChart(
+            chartID = await SaveChart(
                 selectedMethodID,
                 selectedMaterialID,
                 currentUser.id,
@@ -126,10 +134,25 @@
                 raw.map((r) => [r.mma_id, r]),
             ) as Record<string, MeasurementResult>;
             values = {};
+
         } catch (e: any) {
             error = e.toString();
         } finally {
             saving = false;
+        }
+    }
+
+
+    async function saveComment() {
+        if (!chartID || !commentText.trim()) return;
+        savingComment = true;
+        try {
+            await AddComment(chartID, null, commentText.trim(), currentUser.id);
+            commentText = "";
+        } catch (e: any) {
+            error = e.toString();
+        } finally {
+            savingComment = false;
         }
     }
 
@@ -242,6 +265,23 @@
                     </div>
                 {/each}
             </div>
+            {#if chartID}
+                <div class="comment-section">
+                    <textarea
+                        class="comment-input"
+                        bind:value={commentText}
+                        placeholder="Add a run comment (optional)…"
+                        rows="2"
+                    />
+                    <button
+                        class="save-btn"
+                        disabled={!commentText.trim() || savingComment}
+                        on:click={saveComment}
+                    >
+                        {savingComment ? "Saving…" : "Add Comment"}
+                    </button>
+                </div>
+            {/if}
         {/if}
     </main>
 </div>
@@ -446,5 +486,27 @@
         text-align: center;
         padding: 1rem 0.5rem;
         line-height: 1.6;
+    }
+    .comment-section {
+        margin-top: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-width: 480px;
+    }
+    .comment-input {
+        width: 100%;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius);
+        padding: 0.5rem 0.75rem;
+        font-family: var(--font-sans);
+        font-size: 0.875rem;
+        color: var(--colour-text);
+        background: var(--colour-surface);
+        resize: vertical;
+    }
+    .comment-input:focus {
+        outline: none;
+        border-color: var(--colour-primary);
     }
 </style>

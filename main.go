@@ -34,6 +34,7 @@ func main() {
 			app.DataEntry,
 			app.Limits,
 			app.ChartReview,
+			app.Comment,
 		},
 	})
 	if err != nil {

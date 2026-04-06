@@ -15,6 +15,7 @@ type App struct {
 	DataEntry   *handlers.DataEntryHandler
 	Limits      *handlers.LimitsHandler
 	ChartReview *handlers.ChartReviewHandler
+	Comment     *handlers.CommentsHandler
 }
 
 func NewApp() *App {
@@ -27,6 +28,7 @@ func NewApp() *App {
 		DataEntry:   handlers.NewDataEntryHandler(),
 		Limits:      handlers.NewLimitsHandler(),
 		ChartReview: handlers.NewChartReviewHandler(),
+		Comment:     handlers.NewCommentsHandler(),
 	}
 }
 

@@ -74,7 +74,7 @@
         {#if view === "data-entry"}
             <DataEntry {currentUser} />
         {:else if view === "chart-review"}
-            <ChartReview />
+            <ChartReview {currentUser} />
         {:else if view === "library"}
             <Library {currentUser} />
         {:else if view === "admin"}
