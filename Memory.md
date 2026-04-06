@@ -78,6 +78,8 @@ All roles can create methods/materials/analytes/combos. Trust model is audit tra
 - **Outlier annotations** — annotation plugin label annotations (▲/▼) kept only when chart is clamped. Display-only, no click handlers.
 - **Show outliers toggle** — when true, y-axis unclamped and outlier labels suppressed. When false, y-axis clamped to UCL/LCL ±30% and outlier labels shown. Rebuilds charts on toggle.
 - **Light theme** — better for well-lit lab environment.
+- **Violation detection** — computed frontend-only in violations.ts from loaded window of ChartPoint[]. Four codes: OOC (outside UCL/LCL), WRN (2 of 3 outside warning limits), TRD (6-point trend), RUN (8 consecutive one side of mean). Hardcoded thresholds; will move to spc_rule_sets later. ViolationMap keyed by measurement_id.
+- **Raw data table** — rows keyed by sequence_number (canonical, matches charts and paperwork). Value cells coloured by worst violation, all applicable badges shown. Limit values in native title tooltip. Click opens comment modal with analyte name in header.
 
 ## Frontend structure
 
@@ -116,9 +118,10 @@ frontend/  — Svelte app
 - Data entry: paste, save, pass/fail display, chart-level comments
 - Chart review: XmR + mR charts, outlier toggle, raw data toggle, n-per-row layout, comment modal, yellow dot indicators for commented points
 - Comment system: point-level and chart-level, append-only
+- Raw data table: violation indicators (OOC/WRN/TRD/RUN) with cell colouring + badges, limit tooltip on hover, click-to-comment opens existing modal with analyte context
 
 ## What's next
 
-1. Raw data table — violation indicators + click-to-comment
+1. Chart point shapes for WRN violations (different shape for the 2-of-3 points outside warning limits)
 2. Trend detection against spc_rule_sets
 3. Audit log view

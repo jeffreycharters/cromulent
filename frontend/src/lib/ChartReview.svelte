@@ -13,13 +13,23 @@
         AddComment,
     } from "../../wailsjs/go/handlers/CommentsHandler";
 
+    import {
+        computeViolations,
+        worstViolation,
+        VIOLATION_LABELS,
+    } from "./violations";
+    import type { ViolationMap } from "./violations";
+
+    let violationsByAnalyte: Record<number, ViolationMap> = {};
+
     // --- custom plugin: draws limit lines without annotation plugin hit detection ---
 
     const limitLinesPlugin = {
         id: "limitLines",
         afterDatasetsDraw(chart: any) {
             const { ctx, chartArea, scales } = chart;
-            const lines = (chart.options.plugins?.limitLines as any)?.lines ?? [];
+            const lines =
+                (chart.options.plugins?.limitLines as any)?.lines ?? [];
             if (!lines.length) return;
             ctx.save();
             for (const line of lines) {
@@ -135,10 +145,16 @@
         try {
             const [ana, data, cmts] = await Promise.all([
                 GetAnalytesForCombo(selectedMethodID, selectedMaterialID),
-                GetComboChartData(selectedMethodID, selectedMaterialID, pointLimit),
+                GetComboChartData(
+                    selectedMethodID,
+                    selectedMaterialID,
+                    pointLimit,
+                ),
                 GetCommentsForCombo(selectedMethodID, selectedMaterialID),
             ]);
-            analytes = (ana ?? []).sort((a, b) => a.display_order - b.display_order);
+            analytes = (ana ?? []).sort(
+                (a, b) => a.display_order - b.display_order,
+            );
             chartData = data ?? {};
             comments = cmts ?? [];
         } catch (e: any) {
@@ -158,7 +174,8 @@
     function buildCharts() {
         destroyCharts();
         for (const analyte of analytes) {
-            const points: ChartPoint[] = chartData[String(analyte.mma_id)] ?? [];
+            const points: ChartPoint[] =
+                chartData[String(analyte.mma_id)] ?? [];
             if (points.length === 0) continue;
 
             const labels = points.map((p) => String(p.sequence_number));
@@ -186,12 +203,16 @@
                                 tension: 0,
                                 spanGaps: false,
                                 pointBackgroundColor: points.map((p) =>
-                                    commentsByMeasurement[p.measurement_id]?.length > 0
+                                    commentsByMeasurement[p.measurement_id]
+                                        ?.length > 0
                                         ? "#d69e2e"
                                         : "var(--colour-primary)",
                                 ),
                                 pointRadius: points.map((p) =>
-                                    commentsByMeasurement[p.measurement_id]?.length > 0 ? 5 : 3,
+                                    commentsByMeasurement[p.measurement_id]
+                                        ?.length > 0
+                                        ? 5
+                                        : 3,
                                 ),
                             },
                         ],
@@ -314,13 +335,43 @@
                 legend: { display: false },
                 limitLines: {
                     lines: [
-                        last.mean != null ? { value: last.mean, color: "#888", dash: [] } : null,
-                        last.ucl != null ? { value: last.ucl, color: "#e53e3e", dash: [] } : null,
-                        last.lcl != null ? { value: last.lcl, color: "#e53e3e", dash: [] } : null,
-                        last.uwl != null ? { value: last.uwl, color: "#dd6b20", dash: [4, 4] } : null,
-                        last.lwl != null ? { value: last.lwl, color: "#dd6b20", dash: [4, 4] } : null,
-                        last.uil != null ? { value: last.uil, color: "#d69e2e", dash: [2, 4] } : null,
-                        last.lil != null ? { value: last.lil, color: "#d69e2e", dash: [2, 4] } : null,
+                        last.mean != null
+                            ? { value: last.mean, color: "#888", dash: [] }
+                            : null,
+                        last.ucl != null
+                            ? { value: last.ucl, color: "#e53e3e", dash: [] }
+                            : null,
+                        last.lcl != null
+                            ? { value: last.lcl, color: "#e53e3e", dash: [] }
+                            : null,
+                        last.uwl != null
+                            ? {
+                                  value: last.uwl,
+                                  color: "#dd6b20",
+                                  dash: [4, 4],
+                              }
+                            : null,
+                        last.lwl != null
+                            ? {
+                                  value: last.lwl,
+                                  color: "#dd6b20",
+                                  dash: [4, 4],
+                              }
+                            : null,
+                        last.uil != null
+                            ? {
+                                  value: last.uil,
+                                  color: "#d69e2e",
+                                  dash: [2, 4],
+                              }
+                            : null,
+                        last.lil != null
+                            ? {
+                                  value: last.lil,
+                                  color: "#d69e2e",
+                                  dash: [2, 4],
+                              }
+                            : null,
                     ].filter(Boolean),
                 } as any,
                 annotation: { annotations },
@@ -383,7 +434,9 @@
                 legend: { display: false },
                 limitLines: {
                     lines: [
-                        ucl != null ? { value: ucl, color: "#e53e3e", dash: [] } : null,
+                        ucl != null
+                            ? { value: ucl, color: "#e53e3e", dash: [] }
+                            : null,
                     ].filter(Boolean),
                 } as any,
                 annotation: { annotations },
@@ -403,8 +456,17 @@
 
     // --- modal ---
 
-    function openModal(point: ChartPoint) {
+    let modalAnalyteName: string | null = null;
+    let modalAnalyteUnit: string | null = null;
+
+    function openModal(
+        point: ChartPoint,
+        analyteName?: string,
+        analyteUnit?: string,
+    ) {
         modalPoint = point;
+        modalAnalyteName = analyteName ?? null;
+        modalAnalyteUnit = analyteUnit ?? null;
         modalComment = "";
         modalOpen = true;
     }
@@ -425,7 +487,11 @@
                 modalComment.trim(),
                 currentUser.id,
             );
-            comments = (await GetCommentsForCombo(selectedMethodID!, selectedMaterialID!)) ?? [];
+            comments =
+                (await GetCommentsForCombo(
+                    selectedMethodID!,
+                    selectedMaterialID!,
+                )) ?? [];
             modalComment = "";
         } catch (e: any) {
             error = e?.toString() ?? "Failed to save comment";
@@ -462,6 +528,24 @@
             }
         }
     }
+
+    $: {
+        violationsByAnalyte = {};
+        for (const analyte of analytes) {
+            const points = chartData[String(analyte.mma_id)] ?? [];
+            violationsByAnalyte[analyte.mma_id] = computeViolations(points);
+        }
+    }
+
+    $: sequenceNumbers = Array.from(
+        new Set(
+            analytes.flatMap((a) =>
+                (chartData[String(a.mma_id)] ?? []).map(
+                    (p) => p.sequence_number,
+                ),
+            ),
+        ),
+    ).sort((a, b) => a - b);
 </script>
 
 <!-- ── combo picker ───────────────────────────────────────────────────── -->
@@ -509,7 +593,10 @@
         {#if analytes.length > 0}
             <button
                 class="btn-secondary"
-                on:click={() => { showOutliers = !showOutliers; buildCharts(); }}
+                on:click={() => {
+                    showOutliers = !showOutliers;
+                    buildCharts();
+                }}
             >
                 {showOutliers ? "Clamp chart" : "Show outliers"}
             </button>
@@ -542,11 +629,13 @@
                     <div class="chart-pair">
                         <div class="chart-wrap">
                             <span class="chart-label">X (Individuals)</span>
-                            <canvas id="chart-x-{analyte.mma_id}" height="200"></canvas>
+                            <canvas id="chart-x-{analyte.mma_id}" height="200"
+                            ></canvas>
                         </div>
                         <div class="chart-wrap mr">
                             <span class="chart-label">mR (Moving Range)</span>
-                            <canvas id="chart-mr-{analyte.mma_id}" height="120"></canvas>
+                            <canvas id="chart-mr-{analyte.mma_id}" height="120"
+                            ></canvas>
                         </div>
                     </div>
                 {/if}
@@ -561,25 +650,88 @@
         <table class="raw-table">
             <thead>
                 <tr>
-                    <th>#</th>
+                    <th class="seq-col">#</th>
                     {#each analytes as analyte}
                         <th>{analyte.name} ({analyte.unit})</th>
-                        <th>Mean</th>
-                        <th>UCL</th>
-                        <th>LCL</th>
                     {/each}
                 </tr>
             </thead>
             <tbody>
-                {#each Array.from({ length: Math.max(...analytes.map((a) => (chartData[String(a.mma_id)] ?? []).length)) }) as _, i}
+                {#each sequenceNumbers as seq}
                     <tr>
-                        <td>{i + 1}</td>
+                        <td class="seq-col">{seq}</td>
                         {#each analytes as analyte}
-                            {@const p = (chartData[String(analyte.mma_id)] ?? [])[i]}
-                            <td>{p != null ? sigFigs(p.value) : "—"}</td>
-                            <td>{p?.mean != null ? sigFigs(p.mean) : "—"}</td>
-                            <td>{p?.ucl != null ? sigFigs(p.ucl) : "—"}</td>
-                            <td>{p?.lcl != null ? sigFigs(p.lcl) : "—"}</td>
+                            {@const points =
+                                chartData[String(analyte.mma_id)] ?? []}
+                            {@const p = points.find(
+                                (pt) => pt.sequence_number === seq,
+                            )}
+                            {@const violations = p
+                                ? (violationsByAnalyte[analyte.mma_id]?.get(
+                                      p.measurement_id,
+                                  ) ?? [])
+                                : []}
+                            {@const worst = worstViolation(violations)}
+                            <td
+                                class="value-cell"
+                                class:viol-ooc={worst === "OOC"}
+                                class:viol-wrn={worst === "WRN"}
+                                class:viol-trd={worst === "TRD"}
+                                class:viol-run={worst === "RUN"}
+                                title={p != null
+                                    ? [
+                                          p.mean != null
+                                              ? `Mean: ${sigFigs(p.mean)}`
+                                              : null,
+                                          p.ucl != null
+                                              ? `UCL: ${sigFigs(p.ucl)}`
+                                              : null,
+                                          p.lcl != null
+                                              ? `LCL: ${sigFigs(p.lcl)}`
+                                              : null,
+                                          p.uwl != null
+                                              ? `UWL: ${sigFigs(p.uwl)}`
+                                              : null,
+                                          p.lwl != null
+                                              ? `LWL: ${sigFigs(p.lwl)}`
+                                              : null,
+                                          p.uil != null
+                                              ? `UIL: ${sigFigs(p.uil)}`
+                                              : null,
+                                          p.lil != null
+                                              ? `LIL: ${sigFigs(p.lil)}`
+                                              : null,
+                                          ...violations.map(
+                                              (v) => VIOLATION_LABELS[v],
+                                          ),
+                                      ]
+                                          .filter(Boolean)
+                                          .join("\n")
+                                    : ""}
+                                on:click={() =>
+                                    p &&
+                                    openModal(p, analyte.name, analyte.unit)}
+                                role="button"
+                                tabindex="0"
+                                on:keydown={(e) =>
+                                    e.key === "Enter" &&
+                                    p &&
+                                    openModal(p, analyte.name, analyte.unit)}
+                            >
+                                {#if p != null}
+                                    <span class="cell-value"
+                                        >{sigFigs(p.value)}</span
+                                    >
+                                    {#each violations as code}
+                                        <span
+                                            class="badge badge-{code.toLowerCase()}"
+                                            >{code}</span
+                                        >
+                                    {/each}
+                                {:else}
+                                    <span class="cell-empty">—</span>
+                                {/if}
+                            </td>
                         {/each}
                     </tr>
                 {/each}
@@ -593,7 +745,14 @@
     <div class="modal-backdrop" on:click={closeModal}>
         <div class="modal" on:click|stopPropagation>
             <div class="modal-header">
-                <h3>Sequence #{modalPoint.sequence_number}</h3>
+                <h3>
+                    Sequence #{modalPoint.sequence_number}
+                    {#if modalAnalyteName}
+                        — {modalAnalyteName}{modalAnalyteUnit
+                            ? ` (${modalAnalyteUnit})`
+                            : ""}
+                    {/if}
+                </h3>
                 <button class="modal-close" on:click={closeModal}>✕</button>
             </div>
 
@@ -605,11 +764,19 @@
             {#if modalPoint.ucl != null}
                 <div class="modal-limits">
                     <span>UCL {sigFigs(modalPoint.ucl)}</span>
-                    {#if modalPoint.uwl != null}<span>UWL {sigFigs(modalPoint.uwl)}</span>{/if}
-                    {#if modalPoint.uil != null}<span>UIL {sigFigs(modalPoint.uil)}</span>{/if}
+                    {#if modalPoint.uwl != null}<span
+                            >UWL {sigFigs(modalPoint.uwl)}</span
+                        >{/if}
+                    {#if modalPoint.uil != null}<span
+                            >UIL {sigFigs(modalPoint.uil)}</span
+                        >{/if}
                     <span>Mean {sigFigs(modalPoint.mean ?? 0)}</span>
-                    {#if modalPoint.lil != null}<span>LIL {sigFigs(modalPoint.lil)}</span>{/if}
-                    {#if modalPoint.lwl != null}<span>LWL {sigFigs(modalPoint.lwl)}</span>{/if}
+                    {#if modalPoint.lil != null}<span
+                            >LIL {sigFigs(modalPoint.lil)}</span
+                        >{/if}
+                    {#if modalPoint.lwl != null}<span
+                            >LWL {sigFigs(modalPoint.lwl)}</span
+                        >{/if}
                     <span>LCL {sigFigs(modalPoint.lcl)}</span>
                 </div>
             {/if}
@@ -619,7 +786,11 @@
                     <h4>Comments</h4>
                     {#each commentsByMeasurement[modalPoint.measurement_id] as c}
                         <div class="comment">
-                            <span class="comment-meta">{c.username} · {new Date(c.created_at).toLocaleString()}</span>
+                            <span class="comment-meta"
+                                >{c.username} · {new Date(
+                                    c.created_at,
+                                ).toLocaleString()}</span
+                            >
                             <p class="comment-text">{c.text}</p>
                         </div>
                     {/each}
@@ -959,5 +1130,69 @@
     .comment-input:focus {
         outline: none;
         border-color: var(--colour-primary);
+    }
+    /* ── violation cell colours ── */
+    .value-cell {
+        cursor: pointer;
+        position: relative;
+        white-space: nowrap;
+    }
+    .value-cell:hover {
+        background: var(--colour-surface);
+    }
+    .viol-ooc {
+        background: #fed7d7;
+        color: #822727;
+    }
+    .viol-wrn {
+        background: #feebc8;
+        color: #7b341e;
+    }
+    .viol-trd {
+        background: #fefcbf;
+        color: #744210;
+    }
+    .viol-run {
+        background: #fefcbf;
+        color: #744210;
+    }
+
+    /* ── badges ── */
+    .badge {
+        display: inline-block;
+        font-size: 0.6rem;
+        font-weight: 700;
+        padding: 0.1rem 0.3rem;
+        border-radius: 3px;
+        margin-left: 0.25rem;
+        vertical-align: middle;
+        font-family: var(--font-mono);
+    }
+    .badge-ooc {
+        background: #e53e3e;
+        color: white;
+    }
+    .badge-wrn {
+        background: #dd6b20;
+        color: white;
+    }
+    .badge-trd {
+        background: #d69e2e;
+        color: white;
+    }
+    .badge-run {
+        background: #d69e2e;
+        color: white;
+    }
+
+    /* ── seq column ── */
+    .seq-col {
+        text-align: left;
+        color: var(--colour-text-muted);
+    }
+
+    /* ── empty cell ── */
+    .cell-empty {
+        color: var(--colour-text-muted);
     }
 </style>
