@@ -252,8 +252,9 @@
         row: LimitRow,
     ): string {
         const list = regions as any[];
-        const r = list.find((x) => x.mma_id === mmaID);
         if (!list) return "—";
+        const r = list.find((x) => x.mma_id === mmaID);
+        if (!r) return "—";
         const map: Record<LimitRow, number | null> = {
             UCL: r.ucl,
             UWL: r.uwl,
@@ -292,36 +293,34 @@
         savingLimits = true;
         error = "";
         try {
-            const regions = limitAnalytes.map((a, ci) => {
-                const get = (ri: number) => {
-                    const v = newGrid[ri][ci];
-                    return isNumeric(v) ? parseFloat(v) : null;
-                };
-                return {
-                    id: 0,
-                    mma_id: a.id,
-                    ucl: get(0) ?? 0,
-                    uwl: get(1),
-                    uil: get(2),
-                    mean: get(3) ?? 0,
-                    lil: get(4),
-                    lwl: get(5),
-                    lcl: get(6) ?? 0,
-                    effective_from_sequence: newEffectiveFrom,
-                    created_by: currentUser.id,
-                    created_at: "",
-                };
-            });
+          const regions = limitAnalytes
+              .map((a, ci) => {
+                  const get = (ri: number) => {
+                      const v = newGrid[ri][ci];
+                      return isNumeric(v) ? parseFloat(v) : null;
+                  };
+                  return {
+                      id: 0,
+                      mma_id: a.id,
+                      ucl: get(0),
+                      uwl: get(1),
+                      uil: get(2),
+                      mean: get(3),
+                      lil: get(4),
+                      lwl: get(5),
+                      lcl: get(6),
+                      effective_from_sequence: newEffectiveFrom,
+                      created_by: currentUser.id,
+                      created_at: "",
+                  };
+              })
+              .filter((r) => r.ucl !== null && r.lcl !== null);
 
-            // Validate required fields
-            const invalid = regions.some(
-                (r) => r.ucl === 0 && r.lcl === 0 && r.mean === 0,
-            );
-            if (invalid) {
-                error = "UCL, Mean, and LCL are required for all analytes.";
-                savingLimits = false;
-                return;
-            }
+          if (regions.length === 0) {
+              error = "At least one analyte must have UCL and LCL set.";
+              savingLimits = false;
+              return;
+          }
 
             await SaveControlLimitRegions(regions);
             existingRegions =
