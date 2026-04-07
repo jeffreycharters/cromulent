@@ -92,3 +92,23 @@ func (h *ConfigHandler) OpenDBFolderPicker() (string, error) {
 	}
 	return filepath.Join(folder, "cromulent.db"), nil
 }
+
+func (h *ConfigHandler) GetRawDataColWidth() (int, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return 0, err
+	}
+	if cfg.RawDataColWidth == 0 {
+		return 80, nil // default
+	}
+	return cfg.RawDataColWidth, nil
+}
+
+func (h *ConfigHandler) SetRawDataColWidth(width int) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	cfg.RawDataColWidth = width
+	return config.Save(cfg)
+}

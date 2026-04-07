@@ -2,7 +2,7 @@
 
 Paste this at the start of a new conversation to restore context.
 
-**Repo:** https://github.com/jeffreycharters/jcc
+**Repo:** https://github.com/jeffreycharters/cromulent
 
 ## Communication style
 
@@ -51,9 +51,9 @@ Migrations via `PRAGMA user_version`. Plan to merge all into single v1 before re
 
 ## Roles
 
-technician → data entry view  
-reviewer / supervisor → chart review view  
-admin → full access + user management  
+technician → data entry view
+reviewer / supervisor → chart review view
+admin → full access + user management
 
 All roles can create methods/materials/analytes/combos. Trust model is audit trail integrity, not access control.
 
@@ -70,16 +70,31 @@ All roles can create methods/materials/analytes/combos. Trust model is audit tra
 - **Decimal separator** — only `.` accepted for now. Locale deferred.
 - **No LATERAL joins** — SQLite doesn't support them; use correlated subqueries.
 - **Combo-level deactivation** — operates on all analytes for a method+material at once
-- **Passthrough analytes** — analytes with no control_limit_regions are included for paste convenience but not charted. saveLimits filters them out.
+- **Passthrough analytes** — analytes with no control_limit_regions are included for paste convenience but not charted. Raw data table still shows them; charts skip them via `chartableAnalytes` derived reactive.
 - **mR UCL** — derived from X chart limits: `(UCL - LCL) * 0.61`, not from data. mR scale: `(UCL - LCL) * 1.3`.
 - **Sig figs** — hardcoded at 3 via `sigFigs()`. Planned as per-user setting.
-- **limitLinesPlugin** — custom Chart.js plugin draws limit lines (mean, UCL/LCL, UWL/LWL, UIL/LIL) via `afterDatasetsDraw`. Replaces annotation plugin lines which had uncontrollable hit detection.
+- **limitLinesPlugin** — custom Chart.js plugin draws limit lines (mean, UCL/LCL, UWL/LWL, UIL/LIL) via `afterDatasetsDraw`. Passes `points` array (not a `lines` array) so it can draw per-segment lines when control limit regions change mid-chart. Vertical connector lines drawn at boundaries. mR chart uses static `lines` array (separate path in plugin). Replaces annotation plugin lines which had uncontrollable hit detection.
 - **Chart.js point clicking** — `canvas.addEventListener('click')` + `getElementsAtEventForMode('nearest', {intersect: false})`. Do NOT use Chart.js `onClick` option — conflicts with annotation plugin.
-- **Outlier annotations** — annotation plugin label annotations (▲/▼) kept only when chart is clamped. Display-only, no click handlers.
-- **Show outliers toggle** — when true, y-axis unclamped and outlier labels suppressed. When false, y-axis clamped to UCL/LCL ±30% and outlier labels shown. Rebuilds charts on toggle.
+- **Outlier annotations** — annotation plugin label annotations (▲/▼) only when `showOutliers` is false and point is outside clamped bounds. Clamped bounds (UCL/LCL ±30%) are computed separately from axis bounds — axis always expands to show all data, annotations test against clamp bounds only.
+- **Show outliers toggle** — toggles whether outlier label annotations are shown. Y-axis always shows at least UCL/LCL ±30% and expands further if data falls outside. Rebuilds charts on toggle.
+- **Point colours/shapes** — OOC points red, WRN points orange + triangle shape, commented points yellow with larger radius. Violation colour takes priority over comment colour; larger radius still shows comment presence on violation points.
 - **Light theme** — better for well-lit lab environment.
 - **Violation detection** — computed frontend-only in violations.ts from loaded window of ChartPoint[]. Four codes: OOC (outside UCL/LCL), WRN (2 of 3 outside warning limits), TRD (6-point trend), RUN (8 consecutive one side of mean). Hardcoded thresholds; will move to spc_rule_sets later. ViolationMap keyed by measurement_id.
-- **Raw data table** — rows keyed by sequence_number (canonical, matches charts and paperwork). Value cells coloured by worst violation, all applicable badges shown. Limit values in native title tooltip. Click opens comment modal with analyte name in header.
+- **Raw data table** — rows keyed by sequence_number (canonical, matches charts and paperwork). Value cells coloured by worst violation, all applicable badges shown. Limit values in native title tooltip. Click opens comment modal with analyte context. Excel-like fixed-width columns with full cell borders. Seq column sticky. Analyte headers stacked (name + unit on separate lines).
+- **RawDataColWidth** — user preference stored in config.json (`raw_data_col_width`). Loaded on mount, saved with 500ms debounce. Slider (40–160px, step 10) shown in controls bar only when raw data table is visible. Default 80px.
+
+## Config
+
+JSON file at `%APPDATA%/Cromulent/config.json` (Windows) / `~/.config/Cromulent/config.json` (Linux).
+
+```go
+type Config struct {
+    DBPath          string `json:"db_path"`
+    RawDataColWidth int    `json:"raw_data_col_width"`
+}
+```
+
+Load-then-save pattern in handlers to avoid clobbering other fields.
 
 ## Frontend structure
 
@@ -118,10 +133,11 @@ frontend/  — Svelte app
 - Data entry: paste, save, pass/fail display, chart-level comments
 - Chart review: XmR + mR charts, outlier toggle, raw data toggle, n-per-row layout, comment modal, yellow dot indicators for commented points
 - Comment system: point-level and chart-level, append-only
-- Raw data table: violation indicators (OOC/WRN/TRD/RUN) with cell colouring + badges, limit tooltip on hover, click-to-comment opens existing modal with analyte context
+- Raw data table: violation indicators (OOC/WRN/TRD/RUN) with cell colouring + badges, limit tooltip on hover, click-to-comment opens existing modal with analyte context, Excel-like fixed-width columns, sticky seq column, stacked analyte headers, adjustable column width saved to config
+- Point shapes/colours: OOC=red circle, WRN=orange triangle, commented=yellow+larger radius, violation trumps comment for colour
+- Limit lines: per-segment with vertical connectors at region boundaries, supports changing limits mid-chart
 
 ## What's next
 
-1. Chart point shapes for WRN violations (different shape for the 2-of-3 points outside warning limits)
-2. Trend detection against spc_rule_sets
-3. Audit log view
+1. Trend detection against spc_rule_sets
+2. Audit log view

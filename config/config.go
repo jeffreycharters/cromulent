@@ -8,7 +8,8 @@ import (
 )
 
 type Config struct {
-	DBPath string `json:"db_path"`
+	DBPath          string `json:"db_path"`
+	RawDataColWidth int    `json:"raw_data_col_width"`
 }
 
 func configPath() (string, error) {

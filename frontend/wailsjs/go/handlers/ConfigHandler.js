@@ -6,6 +6,10 @@ export function GetDBPath() {
   return window['go']['handlers']['ConfigHandler']['GetDBPath']();
 }
 
+export function GetRawDataColWidth() {
+  return window['go']['handlers']['ConfigHandler']['GetRawDataColWidth']();
+}
+
 export function InitDB() {
   return window['go']['handlers']['ConfigHandler']['InitDB']();
 }
@@ -24,4 +28,8 @@ export function SetContext(arg1) {
 
 export function SetDBPath(arg1) {
   return window['go']['handlers']['ConfigHandler']['SetDBPath'](arg1);
+}
+
+export function SetRawDataColWidth(arg1) {
+  return window['go']['handlers']['ConfigHandler']['SetRawDataColWidth'](arg1);
 }

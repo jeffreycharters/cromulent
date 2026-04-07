@@ -20,7 +20,15 @@
     } from "./violations";
     import type { ViolationMap } from "./violations";
 
+    import {
+        GetRawDataColWidth,
+        SetRawDataColWidth,
+    } from "../../wailsjs/go/handlers/ConfigHandler";
+
     let violationsByAnalyte: Record<number, ViolationMap> = {};
+
+    let rawDataColWidth = 80;
+    let colWidthDebounce: ReturnType<typeof setTimeout>;
 
     // --- custom plugin: draws limit lines without annotation plugin hit detection ---
 
@@ -28,21 +36,95 @@
         id: "limitLines",
         afterDatasetsDraw(chart: any) {
             const { ctx, chartArea, scales } = chart;
-            const lines =
-                (chart.options.plugins?.limitLines as any)?.lines ?? [];
-            if (!lines.length) return;
+            const points: ChartPoint[] =
+                (chart.options.plugins?.limitLines as any)?.points ?? [];
+            if (!points.length) return;
+
+            const limitKeys = [
+                "mean",
+                "ucl",
+                "lcl",
+                "uwl",
+                "lwl",
+                "uil",
+                "lil",
+            ] as const;
+            const lineStyles: Record<
+                string,
+                { color: string; dash: number[] }
+            > = {
+                mean: { color: "#888", dash: [] },
+                ucl: { color: "#e53e3e", dash: [] },
+                lcl: { color: "#e53e3e", dash: [] },
+                uwl: { color: "#dd6b20", dash: [4, 4] },
+                lwl: { color: "#dd6b20", dash: [4, 4] },
+                uil: { color: "#d69e2e", dash: [2, 4] },
+                lil: { color: "#d69e2e", dash: [2, 4] },
+            };
+
             ctx.save();
-            for (const line of lines) {
-                const y = scales.y.getPixelForValue(line.value);
-                if (y < chartArea.top || y > chartArea.bottom) continue;
-                ctx.beginPath();
-                ctx.moveTo(chartArea.left, y);
-                ctx.lineTo(chartArea.right, y);
-                ctx.strokeStyle = line.color;
-                ctx.lineWidth = 1.5;
-                ctx.setLineDash(line.dash);
-                ctx.stroke();
+
+            for (const key of limitKeys) {
+                const style = lineStyles[key];
+                let segStart = 0;
+
+                for (let i = 1; i <= points.length; i++) {
+                    const prevVal = (points[i - 1] as any)[key];
+                    const currVal =
+                        i < points.length ? (points[i] as any)[key] : null;
+
+                    // end segment when value changes or we reach the end
+                    if (i === points.length || currVal !== prevVal) {
+                        if (prevVal == null) {
+                            segStart = i;
+                            continue;
+                        }
+
+                        const y = scales.y.getPixelForValue(prevVal);
+                        if (y < chartArea.top || y > chartArea.bottom) {
+                            segStart = i;
+                            continue;
+                        }
+
+                        const xStart =
+                            segStart === 0
+                                ? chartArea.left
+                                : scales.x.getPixelForValue(segStart);
+                        const xEnd =
+                            i === points.length
+                                ? chartArea.right
+                                : scales.x.getPixelForValue(i);
+
+                        ctx.beginPath();
+                        ctx.moveTo(xStart, y);
+                        ctx.lineTo(xEnd, y);
+                        ctx.strokeStyle = style.color;
+                        ctx.lineWidth = 1.5;
+                        ctx.setLineDash(style.dash);
+                        ctx.stroke();
+
+                        // connect to next segment with a vertical line
+                        if (i < points.length) {
+                            const nextVal = (points[i] as any)[key];
+                            if (nextVal != null) {
+                                const yNext =
+                                    scales.y.getPixelForValue(nextVal);
+                                const xBoundary = scales.x.getPixelForValue(i);
+                                ctx.beginPath();
+                                ctx.moveTo(xBoundary, y);
+                                ctx.lineTo(xBoundary, yNext);
+                                ctx.strokeStyle = style.color;
+                                ctx.lineWidth = 1;
+                                ctx.setLineDash([2, 2]);
+                                ctx.stroke();
+                            }
+                        }
+
+                        segStart = i;
+                    }
+                }
             }
+
             ctx.setLineDash([]);
             ctx.restore();
         },
@@ -116,6 +198,7 @@
                 materialName: mat.name,
             })),
         );
+        rawDataColWidth = await GetRawDataColWidth();
     });
 
     onDestroy(() => {
@@ -124,6 +207,18 @@
 
     $: if (!loading && !showRawData && analytes.length > 0) {
         import("svelte").then(({ tick }) => tick().then(() => buildCharts()));
+    }
+
+    $: chartableAnalytes = analytes.filter((a) => {
+        const pts = chartData[String(a.mma_id)] ?? [];
+        return pts.some((p) => p.ucl != null);
+    });
+
+    function onColWidthChange() {
+        clearTimeout(colWidthDebounce);
+        colWidthDebounce = setTimeout(() => {
+            SetRawDataColWidth(rawDataColWidth);
+        }, 500);
     }
 
     // --- actions ---
@@ -173,7 +268,7 @@
 
     function buildCharts() {
         destroyCharts();
-        for (const analyte of analytes) {
+        for (const analyte of chartableAnalytes) {
             const points: ChartPoint[] =
                 chartData[String(analyte.mma_id)] ?? [];
             if (points.length === 0) continue;
@@ -184,6 +279,8 @@
             const mrValues = points.map((p, i) =>
                 i === 0 ? null : Math.abs(p.value - points[i - 1].value),
             );
+
+            const violations = violationsByAnalyte[analyte.mma_id];
 
             const xCanvas = document.getElementById(
                 `chart-x-${analyte.mma_id}`,
@@ -202,18 +299,32 @@
                                 backgroundColor: "transparent",
                                 tension: 0,
                                 spanGaps: false,
-                                pointBackgroundColor: points.map((p) =>
-                                    commentsByMeasurement[p.measurement_id]
-                                        ?.length > 0
-                                        ? "#d69e2e"
-                                        : "var(--colour-primary)",
-                                ),
+                                pointBackgroundColor: points.map((p) => {
+                                    const codes =
+                                        violations?.get(p.measurement_id) ?? [];
+                                    const worst = worstViolation(codes);
+                                    if (worst === "OOC") return "#e53e3e";
+                                    if (worst === "WRN") return "#dd6b20";
+                                    if (
+                                        commentsByMeasurement[p.measurement_id]
+                                            ?.length > 0
+                                    )
+                                        return "#d69e2e";
+                                    return "var(--colour-primary)";
+                                }),
                                 pointRadius: points.map((p) =>
                                     commentsByMeasurement[p.measurement_id]
                                         ?.length > 0
                                         ? 5
                                         : 3,
                                 ),
+                                pointStyle: points.map((p) => {
+                                    const codes =
+                                        violations?.get(p.measurement_id) ?? [];
+                                    return codes.includes("WRN")
+                                        ? "triangle"
+                                        : "circle";
+                                }),
                             },
                         ],
                     },
@@ -334,45 +445,7 @@
             plugins: {
                 legend: { display: false },
                 limitLines: {
-                    lines: [
-                        last.mean != null
-                            ? { value: last.mean, color: "#888", dash: [] }
-                            : null,
-                        last.ucl != null
-                            ? { value: last.ucl, color: "#e53e3e", dash: [] }
-                            : null,
-                        last.lcl != null
-                            ? { value: last.lcl, color: "#e53e3e", dash: [] }
-                            : null,
-                        last.uwl != null
-                            ? {
-                                  value: last.uwl,
-                                  color: "#dd6b20",
-                                  dash: [4, 4],
-                              }
-                            : null,
-                        last.lwl != null
-                            ? {
-                                  value: last.lwl,
-                                  color: "#dd6b20",
-                                  dash: [4, 4],
-                              }
-                            : null,
-                        last.uil != null
-                            ? {
-                                  value: last.uil,
-                                  color: "#d69e2e",
-                                  dash: [2, 4],
-                              }
-                            : null,
-                        last.lil != null
-                            ? {
-                                  value: last.lil,
-                                  color: "#d69e2e",
-                                  dash: [2, 4],
-                              }
-                            : null,
-                    ].filter(Boolean),
+                    points,
                 } as any,
                 annotation: { annotations },
             },
@@ -606,6 +679,21 @@
             >
                 {showRawData ? "Show charts" : "Show data"}
             </button>
+            {#if showRawData}
+                <label class="limit-label">
+                    Col width
+                    <input
+                        type="range"
+                        min="40"
+                        max="160"
+                        step="10"
+                        bind:value={rawDataColWidth}
+                        on:input={onColWidthChange}
+                        class="col-width-slider"
+                    />
+                    <span class="limit-label">{rawDataColWidth}px</span>
+                </label>
+            {/if}
         {/if}
     </div>
 {/if}
@@ -617,7 +705,7 @@
 <!-- ── charts ─────────────────────────────────────────────────────────── -->
 {#if !showRawData}
     <div class="charts-area" style="--per-row: {chartsPerRow}">
-        {#each analytes as analyte (analyte.mma_id)}
+        {#each chartableAnalytes as analyte (analyte.mma_id)}
             {@const points = chartData[String(analyte.mma_id)] ?? []}
             <section class="analyte-section">
                 <h2 class="analyte-title">
@@ -647,12 +735,15 @@
 <!-- ── raw data ───────────────────────────────────────────────────────── -->
 {#if showRawData && analytes.length > 0}
     <div class="raw-data-area">
-        <table class="raw-table">
+        <table class="raw-table" style="--col-w: {rawDataColWidth}px">
             <thead>
                 <tr>
                     <th class="seq-col">#</th>
                     {#each analytes as analyte}
-                        <th>{analyte.name} ({analyte.unit})</th>
+                        <th>
+                            <span class="th-name">{analyte.name}</span>
+                            <span class="th-unit">{analyte.unit}</span>
+                        </th>
                     {/each}
                 </tr>
             </thead>
@@ -993,20 +1084,34 @@
         overflow-x: auto;
     }
     .raw-table {
-        width: 100%;
         border-collapse: collapse;
         font-family: var(--font-mono);
         font-size: 0.8rem;
+        text-align: center;
     }
     .raw-table th,
     .raw-table td {
+        width: var(--col-w);
+        min-width: var(--col-w);
+        max-width: var(--col-w);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         text-align: right;
-        padding: 0.25rem 0.5rem;
-        border-bottom: 1px solid var(--colour-border);
+        padding: 0.2rem 0.4rem;
+        border: 1px solid var(--colour-border);
+        box-sizing: border-box;
     }
     .raw-table th {
-        color: var(--colour-text-muted);
         font-weight: 600;
+        background: var(--colour-surface);
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    .col-width-slider {
+        width: 80px;
+        cursor: pointer;
     }
     .raw-table tr:last-child td {
         border-bottom: none;
@@ -1187,12 +1292,30 @@
 
     /* ── seq column ── */
     .seq-col {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: var(--colour-surface);
         text-align: left;
         color: var(--colour-text-muted);
+    }
+    .raw-table th.seq-col {
+        z-index: 3; /* above both sticky axes */
     }
 
     /* ── empty cell ── */
     .cell-empty {
         color: var(--colour-text-muted);
+    }
+
+    .th-name {
+        display: block;
+        font-weight: 600;
+    }
+    .th-unit {
+        display: block;
+        font-weight: 400;
+        color: var(--colour-text-muted);
+        font-size: 0.7rem;
     }
 </style>

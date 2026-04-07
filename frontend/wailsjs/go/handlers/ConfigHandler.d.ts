@@ -4,6 +4,8 @@ import {context} from '../models';
 
 export function GetDBPath():Promise<string>;
 
+export function GetRawDataColWidth():Promise<number>;
+
 export function InitDB():Promise<void>;
 
 export function OpenDBFilePicker():Promise<string>;
@@ -13,3 +15,5 @@ export function OpenDBFolderPicker():Promise<string>;
 export function SetContext(arg1:context.Context):Promise<void>;
 
 export function SetDBPath(arg1:string):Promise<void>;
+
+export function SetRawDataColWidth(arg1:number):Promise<void>;
