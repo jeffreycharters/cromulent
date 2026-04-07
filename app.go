@@ -16,6 +16,7 @@ type App struct {
 	Limits      *handlers.LimitsHandler
 	ChartReview *handlers.ChartReviewHandler
 	Comment     *handlers.CommentsHandler
+	SPCRuleSet  *handlers.SPCRuleSetHandler
 }
 
 func NewApp() *App {
@@ -29,6 +30,7 @@ func NewApp() *App {
 		Limits:      handlers.NewLimitsHandler(),
 		ChartReview: handlers.NewChartReviewHandler(),
 		Comment:     handlers.NewCommentsHandler(),
+		SPCRuleSet:  handlers.NewSPCRuleSetHandler(),
 	}
 }
 

@@ -23,7 +23,11 @@ func (h *SetupHandler) NeedsSetup() bool {
 }
 
 func (h *SetupHandler) CreateAdminUser(username, password string) error {
-	return CreateUser(username, password, models.RoleAdmin)
+	id, err := CreateUser(username, password, models.RoleAdmin)
+	if err != nil {
+		return err
+	}
+	return db.EnsureGlobalRuleSet(id)
 }
 
 func (h *SetupHandler) UserExists(username string) bool {

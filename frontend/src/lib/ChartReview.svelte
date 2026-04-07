@@ -25,10 +25,18 @@
         SetRawDataColWidth,
     } from "../../wailsjs/go/handlers/ConfigHandler";
 
+    import {
+        GetRuleSetsForMMA,
+        GetGlobalRuleSet,
+    } from "../../wailsjs/go/handlers/SPCRuleSetHandler";
+    import type { RuleSet } from "./violations";
+
     let violationsByAnalyte: Record<number, ViolationMap> = {};
 
     let rawDataColWidth = 80;
     let colWidthDebounce: ReturnType<typeof setTimeout>;
+
+    let ruleSetsByMMA: Record<number, RuleSet[]> = {};
 
     // --- custom plugin: draws limit lines without annotation plugin hit detection ---
 
@@ -250,6 +258,41 @@
             analytes = (ana ?? []).sort(
                 (a, b) => a.display_order - b.display_order,
             );
+            const global = await GetGlobalRuleSet();
+            const globalRS: RuleSet = {
+                effectiveFromSequence: null,
+                beyondLimitsEnabled: global.beyondLimitsEnabled,
+                warningLimitsEnabled: global.warningLimitsEnabled,
+                warningConsecutiveCount: global.warningConsecutiveCount,
+                warningTriggerCount: global.warningTriggerCount,
+                trendEnabled: global.trendEnabled,
+                trendConsecutiveCount: global.trendConsecutiveCount,
+                oneSideEnabled: global.oneSideEnabled,
+                oneSideConsecutiveCount: global.oneSideConsecutiveCount,
+            };
+
+            ruleSetsByMMA = {};
+            for (const analyte of analytes) {
+                const mmaRuleSets =
+                    (await GetRuleSetsForMMA(analyte.mma_id)) ?? [];
+                console.log("rulesets", mmaRuleSets);
+                ruleSetsByMMA[analyte.mma_id] = [
+                    ...mmaRuleSets.map(
+                        (rs): RuleSet => ({
+                            effectiveFromSequence: rs.effectiveFromSequence,
+                            beyondLimitsEnabled: rs.beyondLimitsEnabled,
+                            warningLimitsEnabled: rs.warningLimitsEnabled,
+                            warningConsecutiveCount: rs.warningConsecutiveCount,
+                            warningTriggerCount: rs.warningTriggerCount,
+                            trendEnabled: rs.trendEnabled,
+                            trendConsecutiveCount: rs.trendConsecutiveCount,
+                            oneSideEnabled: rs.oneSideEnabled,
+                            oneSideConsecutiveCount: rs.oneSideConsecutiveCount,
+                        }),
+                    ),
+                    globalRS,
+                ];
+            }
             chartData = data ?? {};
             comments = cmts ?? [];
         } catch (e: any) {
@@ -606,7 +649,11 @@
         violationsByAnalyte = {};
         for (const analyte of analytes) {
             const points = chartData[String(analyte.mma_id)] ?? [];
-            violationsByAnalyte[analyte.mma_id] = computeViolations(points);
+            const ruleSets = ruleSetsByMMA[analyte.mma_id] ?? [];
+            violationsByAnalyte[analyte.mma_id] = computeViolations(
+                points,
+                ruleSets,
+            );
         }
     }
 

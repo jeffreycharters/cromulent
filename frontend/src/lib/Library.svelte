@@ -23,6 +23,11 @@
         SaveControlLimitRegions,
         DeleteControlLimitRegionSet,
     } from "../../wailsjs/go/handlers/LimitsHandler";
+    import {
+        GetGlobalRuleSet,
+        GetRuleSetsForMMA,
+        CreateMMARuleSet,
+    } from "../../wailsjs/go/handlers/SPCRuleSetHandler";
     import { dndzone } from "svelte-dnd-action";
 
     export let currentUser: any;
@@ -35,7 +40,13 @@
 
     let showHidden = false;
 
-    type Tab = "analytes" | "methods" | "materials" | "combos" | "limits";
+    type Tab =
+        | "analytes"
+        | "methods"
+        | "materials"
+        | "combos"
+        | "limits"
+        | "rules";
 
     const tabs: { id: Tab; label: string }[] = [
         { id: "analytes", label: "Analytes" },
@@ -43,6 +54,7 @@
         { id: "materials", label: "Materials" },
         { id: "combos", label: "Combos" },
         { id: "limits", label: "Limits" },
+        { id: "rules", label: "Rules" },
     ];
 
     let activeTab: Tab = "analytes";
@@ -90,15 +102,32 @@
 
     let limitComboCards: ComboCard[] = [];
     let selectedLimitCombo: ComboCard | null = null;
-    let limitAnalytes: any[] = []; // ordered analytes for selected combo
+    let limitAnalytes: any[] = [];
     let existingRegions: any[] = [];
     let currentSequences: Record<number, number> = {};
 
-    // New region paste grid: LIMIT_ROWS × analyte columns
-    // grid[rowIndex][colIndex] = string value
     let newGrid: string[][] = [];
     let newEffectiveFrom: number = 0;
     let savingLimits = false;
+
+    // --- Rules tab state ---
+    let rulesComboCards: ComboCard[] = [];
+    let selectedRulesCombo: ComboCard | null = null;
+    let existingRuleSets: any[] = [];
+    let rulesError = "";
+    let rulesSuccess = "";
+    let savingRules = false;
+
+    // New rule set form values (seeded from global or most recent per-combo set)
+    let rNewEffectiveFrom: number = 0;
+    let rBeyondLimitsEnabled = true;
+    let rWarningLimitsEnabled = true;
+    let rWarningConsecutiveCount = 3;
+    let rWarningTriggerCount = 2;
+    let rTrendEnabled = true;
+    let rTrendConsecutiveCount = 6;
+    let rOneSideEnabled = true;
+    let rOneSideConsecutiveCount = 8;
 
     $: comboActive =
         draggableAnalytes.length > 0 ? draggableAnalytes[0].active : true;
@@ -129,7 +158,6 @@
         setTimeout(() => (success = ""), 3000);
     }
 
-    // Parse clipboard data into a 2D array of strings
     function parseClipboard(e: ClipboardEvent): string[][] {
         const html = e.clipboardData?.getData("text/html") ?? "";
         if (html) {
@@ -179,6 +207,9 @@
             }, {}),
     );
 
+    // Rules tab uses same combo source
+    $: rulesComboCards = limitComboCards;
+
     async function selectLimitCombo(card: ComboCard) {
         selectedLimitCombo = card;
         error = "";
@@ -201,7 +232,6 @@
             existingRegions = regions ?? [];
             currentSequences = seqs ?? {};
 
-            // Default effective_from to max sequence across MMAs + 1, or 0
             const maxSeq = Math.max(0, ...Object.values(currentSequences));
             newEffectiveFrom = maxSeq;
 
@@ -235,7 +265,6 @@
         newGrid = next;
     }
 
-    // Group existing regions by effective_from_sequence
     $: groupedRegions = existingRegions.reduce(
         (acc: Record<number, any[]>, r: any) => {
             const k = r.effective_from_sequence;
@@ -293,34 +322,34 @@
         savingLimits = true;
         error = "";
         try {
-          const regions = limitAnalytes
-              .map((a, ci) => {
-                  const get = (ri: number) => {
-                      const v = newGrid[ri][ci];
-                      return isNumeric(v) ? parseFloat(v) : null;
-                  };
-                  return {
-                      id: 0,
-                      mma_id: a.id,
-                      ucl: get(0),
-                      uwl: get(1),
-                      uil: get(2),
-                      mean: get(3),
-                      lil: get(4),
-                      lwl: get(5),
-                      lcl: get(6),
-                      effective_from_sequence: newEffectiveFrom,
-                      created_by: currentUser.id,
-                      created_at: "",
-                  };
-              })
-              .filter((r) => r.ucl !== null && r.lcl !== null);
+            const regions = limitAnalytes
+                .map((a, ci) => {
+                    const get = (ri: number) => {
+                        const v = newGrid[ri][ci];
+                        return isNumeric(v) ? parseFloat(v) : null;
+                    };
+                    return {
+                        id: 0,
+                        mma_id: a.id,
+                        ucl: get(0),
+                        uwl: get(1),
+                        uil: get(2),
+                        mean: get(3),
+                        lil: get(4),
+                        lwl: get(5),
+                        lcl: get(6),
+                        effective_from_sequence: newEffectiveFrom,
+                        created_by: currentUser.id,
+                        created_at: "",
+                    };
+                })
+                .filter((r) => r.ucl !== null && r.lcl !== null);
 
-          if (regions.length === 0) {
-              error = "At least one analyte must have UCL and LCL set.";
-              savingLimits = false;
-              return;
-          }
+            if (regions.length === 0) {
+                error = "At least one analyte must have UCL and LCL set.";
+                savingLimits = false;
+                return;
+            }
 
             await SaveControlLimitRegions(regions);
             existingRegions =
@@ -334,6 +363,145 @@
             error = e.toString();
         } finally {
             savingLimits = false;
+        }
+    }
+
+    // --- Rules tab logic ---
+
+    function firstMMAID(card: ComboCard): number {
+        // First by display_order — same ordering used elsewhere in the file
+        const ordered = mmas
+            .filter(
+                (m) =>
+                    m.method_id === card.methodID &&
+                    m.material_id === card.materialID &&
+                    m.active,
+            )
+            .sort((a, b) => a.display_order - b.display_order);
+        return ordered[0]?.id ?? card.mmaIDs[0];
+    }
+
+    function populateRuleForm(rs: any) {
+        rBeyondLimitsEnabled = rs.beyondLimitsEnabled;
+        rWarningLimitsEnabled = rs.warningLimitsEnabled;
+        rWarningConsecutiveCount = rs.warningConsecutiveCount;
+        rWarningTriggerCount = rs.warningTriggerCount;
+        rTrendEnabled = rs.trendEnabled;
+        rTrendConsecutiveCount = rs.trendConsecutiveCount;
+        rOneSideEnabled = rs.oneSideEnabled;
+        rOneSideConsecutiveCount = rs.oneSideConsecutiveCount;
+    }
+
+    function ruleSetsDiffer(a: any, b: any): boolean {
+        return (
+            a.beyondLimitsEnabled !== b.beyondLimitsEnabled ||
+            a.warningLimitsEnabled !== b.warningLimitsEnabled ||
+            a.warningConsecutiveCount !== b.warningConsecutiveCount ||
+            a.warningTriggerCount !== b.warningTriggerCount ||
+            a.trendEnabled !== b.trendEnabled ||
+            a.trendConsecutiveCount !== b.trendConsecutiveCount ||
+            a.oneSideEnabled !== b.oneSideEnabled ||
+            a.oneSideConsecutiveCount !== b.oneSideConsecutiveCount
+        );
+    }
+
+    function currentFormAsRuleSet(): any {
+        return {
+            beyondLimitsEnabled: rBeyondLimitsEnabled,
+            warningLimitsEnabled: rWarningLimitsEnabled,
+            warningConsecutiveCount: rWarningConsecutiveCount,
+            warningTriggerCount: rWarningTriggerCount,
+            trendEnabled: rTrendEnabled,
+            trendConsecutiveCount: rTrendConsecutiveCount,
+            oneSideEnabled: rOneSideEnabled,
+            oneSideConsecutiveCount: rOneSideConsecutiveCount,
+        };
+    }
+
+    async function selectRulesCombo(card: ComboCard) {
+        selectedRulesCombo = card;
+        rulesError = "";
+        rulesSuccess = "";
+        try {
+            const mmaID = firstMMAID(card);
+            const [ruleSets, globalRS] = await Promise.all([
+                GetRuleSetsForMMA(mmaID),
+                GetGlobalRuleSet(),
+            ]);
+            existingRuleSets = (ruleSets ?? []).sort(
+                (a: any, b: any) =>
+                    (a.effectiveFromSequence ?? 0) -
+                    (b.effectiveFromSequence ?? 0),
+            );
+
+            // Seed form from most recent per-combo set, or global if none
+            const seed =
+                existingRuleSets.length > 0
+                    ? existingRuleSets[existingRuleSets.length - 1]
+                    : globalRS;
+            populateRuleForm(seed);
+
+            // Default effective_from to current max sequence for this combo + 1, or 0
+            const seqs = await GetCurrentSequencesForMMAs(card.mmaIDs);
+            const maxSeq = Math.max(0, ...Object.values(seqs ?? {}));
+            rNewEffectiveFrom = maxSeq;
+        } catch (e: any) {
+            rulesError = e.toString();
+        }
+    }
+
+    async function saveRuleSet() {
+        if (!selectedRulesCombo) return;
+        rulesError = "";
+        rulesSuccess = "";
+
+        // Diff against baseline: most recent per-combo set, or global
+        let baseline: any;
+        if (existingRuleSets.length > 0) {
+            baseline = existingRuleSets[existingRuleSets.length - 1];
+        } else {
+            try {
+                baseline = await GetGlobalRuleSet();
+            } catch (e: any) {
+                rulesError = e.toString();
+                return;
+            }
+        }
+
+        if (!ruleSetsDiffer(currentFormAsRuleSet(), baseline)) {
+            rulesSuccess = "No changes from current rules — nothing saved.";
+            setTimeout(() => (rulesSuccess = ""), 4000);
+            return;
+        }
+
+        savingRules = true;
+        try {
+            const mmaID = firstMMAID(selectedRulesCombo);
+            await CreateMMARuleSet(
+                mmaID,
+                rNewEffectiveFrom,
+                rBeyondLimitsEnabled,
+                rWarningLimitsEnabled,
+                rWarningConsecutiveCount,
+                rWarningTriggerCount,
+                rTrendEnabled,
+                rTrendConsecutiveCount,
+                rOneSideEnabled,
+                rOneSideConsecutiveCount,
+                currentUser.id,
+            );
+            const updated = await GetRuleSetsForMMA(mmaID);
+            existingRuleSets = (updated ?? []).sort(
+                (a: any, b: any) =>
+                    (a.effectiveFromSequence ?? 0) -
+                    (b.effectiveFromSequence ?? 0),
+            );
+            rulesSuccess = "Rule set saved.";
+            setTimeout(() => (rulesSuccess = ""), 3000);
+        } catch (e: any) {
+            rulesError = e.toString();
+        } finally {
+            savingRules = false;
         }
     }
 
@@ -419,7 +587,7 @@
         const combo = mmas.find(
             (m) => m.method_id === selectedMethodID && m.material_id === matID,
         );
-        if (!combo) return true; // no combo exists yet — not inactive, just unlinked
+        if (!combo) return true;
         return combo.active;
     }
 
@@ -541,9 +709,9 @@
                       m.method_id === selectedMethodID &&
                       m.material_id === mat.id,
               );
-              if (!combo) return true; // unlinked, always show
-              if (combo.active) return true; // active, always show
-              return showHidden; // inactive, only show if showHidden
+              if (!combo) return true;
+              if (combo.active) return true;
+              return showHidden;
           })
         : materials;
 
@@ -580,6 +748,7 @@
                 on:click={() => {
                     activeTab = tab.id;
                     if (tab.id !== "limits") selectedLimitCombo = null;
+                    if (tab.id !== "rules") selectedRulesCombo = null;
                 }}
             >
                 {tab.label}
@@ -834,7 +1003,6 @@
                     </div>
                 </div>
 
-                <!-- Existing region sets -->
                 {#each Object.entries(groupedRegions).sort((a, b) => Number(a[0]) - Number(b[0])) as [seq, regions]}
                     <div class="region-set">
                         <div class="region-set-header">
@@ -886,7 +1054,6 @@
                     </div>
                 {/each}
 
-                <!-- New region paste grid -->
                 <div class="region-set new-region">
                     <div class="region-set-header">
                         <span class="region-seq">
@@ -953,6 +1120,266 @@
                                 {/each}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            {/if}
+        {:else if activeTab === "rules"}
+            {#if !selectedRulesCombo}
+                {#if rulesComboCards.length === 0}
+                    <p class="empty">
+                        No active combos. Set them up in the Combos tab first.
+                    </p>
+                {:else}
+                    <p class="hint">
+                        Per-combo overrides of the global SPC rules. Select a
+                        combo to view history or add a new rule set.
+                    </p>
+                    <div class="combo-cards">
+                        {#each rulesComboCards as card}
+                            <button
+                                class="combo-card"
+                                on:click={() => selectRulesCombo(card)}
+                            >
+                                <span class="card-method"
+                                    >{card.methodName}</span
+                                >
+                                <span class="card-material"
+                                    >{card.materialName}</span
+                                >
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
+            {:else}
+                <div class="limits-header">
+                    <div>
+                        <button
+                            class="back-btn"
+                            on:click={() => {
+                                selectedRulesCombo = null;
+                                rulesError = "";
+                                rulesSuccess = "";
+                            }}>← Back</button
+                        >
+                        <h2 class="limits-title">
+                            {selectedRulesCombo.methodName}
+                        </h2>
+                        <p class="limits-subtitle">
+                            {selectedRulesCombo.materialName}
+                        </p>
+                    </div>
+                </div>
+
+                {#if rulesError}
+                    <div class="banner error" role="alert">
+                        {rulesError}
+                        <button on:click={() => (rulesError = "")}>✕</button>
+                    </div>
+                {/if}
+                {#if rulesSuccess}
+                    <div class="banner success" role="status">
+                        {rulesSuccess}
+                    </div>
+                {/if}
+
+                <!-- History -->
+                {#if existingRuleSets.length > 0}
+                    {#each existingRuleSets as rs}
+                        <div class="region-set">
+                            <div class="region-set-header">
+                                <span class="region-seq">
+                                    Effective from sequence {rs.effectiveFromSequence ??
+                                        "—"}
+                                </span>
+                                <span class="rule-history-date muted">
+                                    {rs.createdAt?.slice(0, 10) ?? ""}
+                                </span>
+                            </div>
+                            <div class="rule-history-grid">
+                                <div class="rule-group">
+                                    <h4 class="rule-group-label">
+                                        Control limits
+                                    </h4>
+                                    <div class="rule-row">
+                                        <span class="rule-history-label"
+                                            >Beyond limits (OOC)</span
+                                        >
+                                        <span
+                                            class="rule-history-value"
+                                            class:enabled={rs.beyondLimitsEnabled}
+                                            class:rule-disabled={!rs.beyondLimitsEnabled}
+                                        >
+                                            {rs.beyondLimitsEnabled
+                                                ? "Enabled"
+                                                : "Disabled"}
+                                        </span>
+                                    </div>
+                                    <div class="rule-row">
+                                        <span class="rule-history-label"
+                                            >Warning limits</span
+                                        >
+                                        <span
+                                            class="rule-history-value"
+                                            class:enabled={rs.warningLimitsEnabled}
+                                            class:rule-disabled={!rs.warningLimitsEnabled}
+                                        >
+                                            {rs.warningLimitsEnabled
+                                                ? `Enabled — ${rs.warningTriggerCount} of ${rs.warningConsecutiveCount} points`
+                                                : "Disabled"}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="rule-group">
+                                    <h4 class="rule-group-label">Run rules</h4>
+                                    <div class="rule-row">
+                                        <span class="rule-history-label"
+                                            >Trend</span
+                                        >
+                                        <span
+                                            class="rule-history-value"
+                                            class:enabled={rs.trendEnabled}
+                                            class:rule-disabled={!rs.trendEnabled}
+                                        >
+                                            {rs.trendEnabled
+                                                ? `Enabled — ${rs.trendConsecutiveCount} consecutive`
+                                                : "Disabled"}
+                                        </span>
+                                    </div>
+                                    <div class="rule-row">
+                                        <span class="rule-history-label"
+                                            >One side of mean</span
+                                        >
+                                        <span
+                                            class="rule-history-value"
+                                            class:enabled={rs.oneSideEnabled}
+                                            class:rule-disabled={!rs.oneSideEnabled}
+                                        >
+                                            {rs.oneSideEnabled
+                                                ? `Enabled — ${rs.oneSideConsecutiveCount} consecutive`
+                                                : "Disabled"}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {/each}
+                {:else}
+                    <p class="hint">No overrides yet — global rules apply.</p>
+                {/if}
+
+                <!-- New rule set form -->
+                <div class="region-set new-region">
+                    <div class="region-set-header">
+                        <span class="region-seq">
+                            New rule set — effective from sequence
+                            <input
+                                type="number"
+                                class="seq-input"
+                                bind:value={rNewEffectiveFrom}
+                                min="0"
+                            />
+                        </span>
+                        <button
+                            class="save-btn"
+                            disabled={savingRules}
+                            on:click={saveRuleSet}
+                        >
+                            {savingRules ? "Saving…" : "Save rule set"}
+                        </button>
+                    </div>
+
+                    <div class="rule-groups">
+                        <div class="rule-group">
+                            <h4 class="rule-group-label">Control limits</h4>
+                            <div class="rule-row">
+                                <label class="rule-toggle">
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={rBeyondLimitsEnabled}
+                                    />
+                                    Beyond control limits (OOC)
+                                </label>
+                            </div>
+                            <div
+                                class="rule-row"
+                                class:disabled={!rWarningLimitsEnabled}
+                            >
+                                <label class="rule-toggle">
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={rWarningLimitsEnabled}
+                                    />
+                                    Warning limits
+                                </label>
+                                <span class="rule-desc">
+                                    <input
+                                        type="number"
+                                        class="count-input"
+                                        bind:value={rWarningTriggerCount}
+                                        min="1"
+                                        max="10"
+                                        disabled={!rWarningLimitsEnabled}
+                                    />
+                                    of
+                                    <input
+                                        type="number"
+                                        class="count-input"
+                                        bind:value={rWarningConsecutiveCount}
+                                        min="1"
+                                        max="10"
+                                        disabled={!rWarningLimitsEnabled}
+                                    /> points outside warning limits
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="rule-group">
+                            <h4 class="rule-group-label">Run rules</h4>
+                            <div
+                                class="rule-row"
+                                class:disabled={!rTrendEnabled}
+                            >
+                                <label class="rule-toggle">
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={rTrendEnabled}
+                                    />
+                                    Trend
+                                </label>
+                                <span class="rule-desc">
+                                    <input
+                                        type="number"
+                                        class="count-input"
+                                        bind:value={rTrendConsecutiveCount}
+                                        min="2"
+                                        max="20"
+                                        disabled={!rTrendEnabled}
+                                    /> consecutive points trending in one direction
+                                </span>
+                            </div>
+                            <div
+                                class="rule-row"
+                                class:disabled={!rOneSideEnabled}
+                            >
+                                <label class="rule-toggle">
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={rOneSideEnabled}
+                                    />
+                                    One side of mean
+                                </label>
+                                <span class="rule-desc">
+                                    <input
+                                        type="number"
+                                        class="count-input"
+                                        bind:value={rOneSideConsecutiveCount}
+                                        min="2"
+                                        max="20"
+                                        disabled={!rOneSideEnabled}
+                                    /> consecutive points on one side of mean
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             {/if}
@@ -1130,7 +1557,7 @@
         max-width: 480px;
     }
 
-    /* Limits tab */
+    /* Limits + Rules shared */
     .combo-cards {
         display: flex;
         flex-wrap: wrap;
@@ -1337,5 +1764,98 @@
         display: flex;
         gap: 1rem;
         flex-wrap: wrap;
+    }
+
+    /* Rules tab */
+    .rule-history-grid {
+        display: flex;
+        gap: 2rem;
+        flex-wrap: wrap;
+    }
+    .rule-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 220px;
+    }
+    .rule-group-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--colour-text-muted);
+        margin-bottom: 0.25rem;
+    }
+    .rule-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--colour-border);
+        transition: opacity 0.15s;
+    }
+    .rule-row:last-child {
+        border-bottom: none;
+    }
+    .rule-row.disabled {
+        opacity: 0.45;
+    }
+    .rule-history-label {
+        font-size: 0.875rem;
+        color: var(--colour-text-muted);
+        min-width: 160px;
+    }
+    .rule-history-value {
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    .rule-history-value.enabled {
+        color: var(--colour-success);
+    }
+    .rule-history-value.rule-disabled {
+        color: var(--colour-text-muted);
+    }
+    .rule-history-date {
+        font-size: 0.8rem;
+        font-family: var(--font-mono);
+    }
+    .rule-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        min-width: 200px;
+    }
+    .rule-toggle input[type="checkbox"] {
+        width: 1rem;
+        accent-color: var(--colour-primary);
+        cursor: pointer;
+    }
+    .rule-desc {
+        font-size: 0.875rem;
+        color: var(--colour-text-muted);
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        flex-wrap: wrap;
+    }
+    .count-input {
+        width: 3.5rem;
+        padding: 0.2rem 0.4rem;
+        font-family: var(--font-mono);
+        font-size: 0.875rem;
+        text-align: center;
+    }
+    .rule-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        margin-top: 1rem;
+    }
+    .muted {
+        color: var(--colour-text-muted);
     }
 </style>

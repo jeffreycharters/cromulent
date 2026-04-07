@@ -67,22 +67,26 @@ func (h *AuthHandler) IsAuthenticated() bool {
 	return h.CurrentUser() != nil
 }
 
-func CreateUser(username, password string, role models.Role) error {
+func CreateUser(username, password string, role models.Role) (int64, error) {
 	if len(password) < 6 {
-		return fmt.Errorf("password must be at least 6 characters")
+		return 0, fmt.Errorf("password must be at least 6 characters")
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
+		return 0, fmt.Errorf("hash password: %w", err)
 	}
-	_, err = db.DB.Exec(
+	result, err := db.DB.Exec(
 		`INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)`,
 		username, string(hash), role,
 	)
 	if err != nil {
-		return fmt.Errorf("create user: %w", err)
+		return 0, fmt.Errorf("create user: %w", err)
 	}
-	return nil
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("last insert id: %w", err)
+	}
+	return id, nil
 }
 
 func (h *AuthHandler) ListUsers() ([]models.UserResponse, error) {
@@ -116,5 +120,6 @@ func (h *AuthHandler) ActivateUser(id int64) error {
 }
 
 func (h *AuthHandler) CreateUser(username, password, role string) error {
-	return CreateUser(username, password, models.Role(role))
+	_, err := CreateUser(username, password, models.Role(role))
+	return err
 }

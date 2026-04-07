@@ -230,6 +230,42 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class SPCRuleSet {
+	    id: number;
+	    materialMethodId?: number;
+	    effectiveFromSequence?: number;
+	    beyondLimitsEnabled: boolean;
+	    warningLimitsEnabled: boolean;
+	    warningConsecutiveCount: number;
+	    warningTriggerCount: number;
+	    trendEnabled: boolean;
+	    trendConsecutiveCount: number;
+	    oneSideEnabled: boolean;
+	    oneSideConsecutiveCount: number;
+	    createdBy: number;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SPCRuleSet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.materialMethodId = source["materialMethodId"];
+	        this.effectiveFromSequence = source["effectiveFromSequence"];
+	        this.beyondLimitsEnabled = source["beyondLimitsEnabled"];
+	        this.warningLimitsEnabled = source["warningLimitsEnabled"];
+	        this.warningConsecutiveCount = source["warningConsecutiveCount"];
+	        this.warningTriggerCount = source["warningTriggerCount"];
+	        this.trendEnabled = source["trendEnabled"];
+	        this.trendConsecutiveCount = source["trendConsecutiveCount"];
+	        this.oneSideEnabled = source["oneSideEnabled"];
+	        this.oneSideConsecutiveCount = source["oneSideConsecutiveCount"];
+	        this.createdBy = source["createdBy"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class UserResponse {
 	    id: number;
 	    username: string;

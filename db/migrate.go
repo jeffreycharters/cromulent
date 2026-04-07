@@ -165,4 +165,37 @@ CREATE TABLE IF NOT EXISTS spc_rule_sets (
 		sql: `ALTER TABLE control_limit_regions ADD COLUMN deleted_at DATETIME;
     ALTER TABLE control_limit_regions ADD COLUMN deleted_by INTEGER REFERENCES users(id);`,
 	},
+	{
+		version: 5,
+		sql: `
+ALTER TABLE spc_rule_sets ADD COLUMN material_method_id INTEGER REFERENCES material_method_analytes(id);
+ALTER TABLE spc_rule_sets ADD COLUMN effective_from_sequence INTEGER;
+
+ALTER TABLE spc_rule_sets ADD COLUMN warning_limits_enabled INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE spc_rule_sets ADD COLUMN warning_consecutive_count INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE spc_rule_sets ADD COLUMN warning_trigger_count INTEGER NOT NULL DEFAULT 2;
+
+ALTER TABLE spc_rule_sets DROP COLUMN beyond_sigma_n;
+ALTER TABLE spc_rule_sets DROP COLUMN run_trend_enabled;
+ALTER TABLE spc_rule_sets DROP COLUMN run_trend_n;
+ALTER TABLE spc_rule_sets DROP COLUMN one_side_enabled;
+ALTER TABLE spc_rule_sets DROP COLUMN one_side_n;
+ALTER TABLE spc_rule_sets DROP COLUMN beyond_sigma_enabled;
+ALTER TABLE spc_rule_sets DROP COLUMN effective_from_date;
+
+ALTER TABLE spc_rule_sets ADD COLUMN beyond_limits_enabled INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE spc_rule_sets ADD COLUMN trend_enabled INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE spc_rule_sets ADD COLUMN trend_consecutive_count INTEGER NOT NULL DEFAULT 6;
+ALTER TABLE spc_rule_sets ADD COLUMN one_side_enabled INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE spc_rule_sets ADD COLUMN one_side_consecutive_count INTEGER NOT NULL DEFAULT 8;
+
+INSERT INTO spc_rule_sets (
+    material_method_id, effective_from_sequence,
+    beyond_limits_enabled,
+    warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
+    trend_enabled, trend_consecutive_count,
+    one_side_enabled, one_side_consecutive_count,
+    created_by
+) SELECT NULL, NULL, 1, 1, 3, 2, 1, 6, 1, 8, id FROM users WHERE role = 'admin' LIMIT 1;`,
+	},
 }

@@ -35,6 +35,7 @@ func main() {
 			app.Limits,
 			app.ChartReview,
 			app.Comment,
+			app.SPCRuleSet,
 		},
 	})
 	if err != nil {
