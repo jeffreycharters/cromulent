@@ -1,16 +1,15 @@
-# README
+# Cromulent Control Charting
 
-## About
+## Because everything else out there sucks
 
-This is the official Wails Svelte-TS template.
+I got sick of using all the lousy stuff we have no choice but to use when it comes to control charting in our ISO 17025-accredited laboratory. So I made this.
 
-## Live Development
+Cromulent is a desktop application that can be compiled for PC/MacOS/Linux and is built using [wails.io](https://wails.io).
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## Stuff I want to remember to include in docs
 
-## Building
+- Charting rules can be changed and will be only applied moving forward. At the moment it is not possible to apply rules retroactively, thus it is important to ensure correct rules are being applied from the outset. Global values can be set in settings by supervisors or admins.
 
-To build a redistributable, production mode package, use `wails build`.
+## Development
+
+If you want to have a go at this, clone to your environment, install wails and run `wails dev`.
