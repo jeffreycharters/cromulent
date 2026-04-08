@@ -187,15 +187,6 @@ ALTER TABLE spc_rule_sets ADD COLUMN beyond_limits_enabled INTEGER NOT NULL DEFA
 ALTER TABLE spc_rule_sets ADD COLUMN trend_enabled INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE spc_rule_sets ADD COLUMN trend_consecutive_count INTEGER NOT NULL DEFAULT 6;
 ALTER TABLE spc_rule_sets ADD COLUMN one_side_enabled INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE spc_rule_sets ADD COLUMN one_side_consecutive_count INTEGER NOT NULL DEFAULT 8;
-
-INSERT INTO spc_rule_sets (
-    material_method_id, effective_from_sequence,
-    beyond_limits_enabled,
-    warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
-    trend_enabled, trend_consecutive_count,
-    one_side_enabled, one_side_consecutive_count,
-    created_by
-) SELECT NULL, NULL, 1, 1, 3, 2, 1, 6, 1, 8, id FROM users WHERE role = 'admin' LIMIT 1;`,
+ALTER TABLE spc_rule_sets ADD COLUMN one_side_consecutive_count INTEGER NOT NULL DEFAULT 8;`,
 	},
 }
