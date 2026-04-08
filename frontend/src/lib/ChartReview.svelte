@@ -387,6 +387,20 @@
             ) as HTMLCanvasElement | null;
 
             if (mrCanvas) {
+                const mrUcl = mRucl(points);
+                // Synthesise a points-shaped array carrying only the mR UCL so
+                // limitLinesPlugin can draw it using the same segment logic.
+                const mrPoints = points.map((p) => ({
+                    ...p,
+                    mean: null,
+                    ucl: mrUcl,
+                    lcl: null,
+                    uwl: null,
+                    lwl: null,
+                    uil: null,
+                    lil: null,
+                }));
+
                 chartInstances[`${analyte.mma_id}-mr`] = new Chart(mrCanvas, {
                     type: "line",
                     data: {
@@ -403,7 +417,7 @@
                             },
                         ],
                     },
-                    options: mrChartOptions(mRucl(points), points),
+                    options: mrChartOptions(mrUcl, points, mrPoints),
                 });
             }
         }
@@ -432,7 +446,6 @@
 
         const ucl = points.find((p) => p.ucl != null)?.ucl ?? null;
         const lcl = points.find((p) => p.lcl != null)?.lcl ?? null;
-        const last = points[points.length - 1];
 
         let yMin: number;
         let yMax: number;
@@ -480,9 +493,7 @@
             animation: { duration: 0 },
             plugins: {
                 legend: { display: false },
-                limitLines: {
-                    points,
-                } as any,
+                limitLines: { points } as any,
                 annotation: { annotations },
             },
             scales: {
@@ -501,7 +512,11 @@
         };
     }
 
-    function mrChartOptions(ucl: number | null, points: ChartPoint[]) {
+    function mrChartOptions(
+        ucl: number | null,
+        points: ChartPoint[],
+        mrPoints: Omit<ChartPoint, "value">[],
+    ) {
         const annotations: Record<string, any> = {};
 
         const first = points.find((p) => p.ucl != null && p.lcl != null);
@@ -541,13 +556,7 @@
             animation: { duration: 0 },
             plugins: {
                 legend: { display: false },
-                limitLines: {
-                    lines: [
-                        ucl != null
-                            ? { value: ucl, color: "#e53e3e", dash: [] }
-                            : null,
-                    ].filter(Boolean),
-                } as any,
+                limitLines: { points: mrPoints } as any,
                 annotation: { annotations },
             },
             scales: {
