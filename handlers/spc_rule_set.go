@@ -3,6 +3,8 @@ package handlers
 import (
 	"cromulent/db"
 	"cromulent/models"
+	"database/sql"
+	"errors"
 	"fmt"
 )
 
@@ -140,4 +142,48 @@ func scanRuleSetRow(row rowScanner) (models.SPCRuleSet, error) {
 		return rs, fmt.Errorf("scan rule set: %w", err)
 	}
 	return rs, nil
+}
+
+func (h *SPCRuleSetHandler) GetEffectiveRuleSetForCombo(mmaID int64, sequence int64) (*models.SPCRuleSet, error) {
+	// Try most recent per-combo rule set effective at or before the given sequence
+	row := db.DB.QueryRow(`
+		SELECT id, material_method_id, effective_from_sequence,
+			beyond_limits_enabled,
+			warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
+			trend_enabled, trend_consecutive_count,
+			one_side_enabled, one_side_consecutive_count,
+			created_by, created_at
+		FROM spc_rule_sets
+		WHERE material_method_id = ?
+		  AND effective_from_sequence <= ?
+		ORDER BY effective_from_sequence DESC
+		LIMIT 1`,
+		mmaID, sequence,
+	)
+	rs, err := scanRuleSetRow(row)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("get effective rule set for combo: %w", err)
+	}
+	if err == nil {
+		return &rs, nil
+	}
+
+	// Fall back to global rule set
+	globalRow := db.DB.QueryRow(`
+		SELECT id, material_method_id, effective_from_sequence,
+			beyond_limits_enabled,
+			warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
+			trend_enabled, trend_consecutive_count,
+			one_side_enabled, one_side_consecutive_count,
+			created_by, created_at
+		FROM spc_rule_sets
+		WHERE material_method_id IS NULL
+		ORDER BY id DESC
+		LIMIT 1`,
+	)
+	globalRS, err := scanRuleSetRow(globalRow)
+	if err != nil {
+		return nil, fmt.Errorf("get global rule set fallback: %w", err)
+	}
+	return &globalRS, nil
 }

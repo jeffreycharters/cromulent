@@ -44,7 +44,7 @@ Core flow: technicians enter measurement data → reviewer checks charts, adds t
 - **control_charts** — locked_at set immediately on save, immutable from creation.
 - **measurements** — append-only. sequence_number is per-MMA immutable run number. sequence_order is column position within a chart.
 - **comments** — measurement_id nullable (null = chart-level, set = point-level). Append-only.
-- **spc_rule_sets** — not yet wired to UI.
+- **spc_rule_sets** — versioned per combo by effective_from_sequence. material_method_id NULL = global default. Append-only (no delete/update) for ISO 17025 audit trail integrity.
 - **chart_metadata_fields / chart_metadata_values** — flexible metadata per chart.
 
 Migrations via `PRAGMA user_version`. Plan to merge all into single v1 before release.
@@ -79,9 +79,11 @@ All roles can create methods/materials/analytes/combos. Trust model is audit tra
 - **Show outliers toggle** — toggles whether outlier label annotations are shown. Y-axis always shows at least UCL/LCL ±30% and expands further if data falls outside. Rebuilds charts on toggle.
 - **Point colours/shapes** — OOC points red, WRN points orange + triangle shape, commented points yellow with larger radius. Violation colour takes priority over comment colour; larger radius still shows comment presence on violation points.
 - **Light theme** — better for well-lit lab environment.
-- **Violation detection** — computed frontend-only in violations.ts from loaded window of ChartPoint[]. Four codes: OOC (outside UCL/LCL), WRN (2 of 3 outside warning limits), TRD (6-point trend), RUN (8 consecutive one side of mean). Hardcoded thresholds; will move to spc_rule_sets later. ViolationMap keyed by measurement_id.
+- **Violation detection** — computed frontend-only in violations.ts from loaded window of ChartPoint[]. Four codes: OOC (outside UCL/LCL), WRN (2 of 3 outside warning limits), TRD (6-point trend), RUN (8 consecutive one side of mean). Thresholds driven by spc_rule_sets — see SPC rules below. ViolationMap keyed by measurement_id.
 - **Raw data table** — rows keyed by sequence_number (canonical, matches charts and paperwork). Value cells coloured by worst violation, all applicable badges shown. Limit values in native title tooltip. Click opens comment modal with analyte context. Excel-like fixed-width columns with full cell borders. Seq column sticky. Analyte headers stacked (name + unit on separate lines).
 - **RawDataColWidth** — user preference stored in config.json (`raw_data_col_width`). Loaded on mount, saved with 500ms debounce. Slider (40–160px, step 10) shown in controls bar only when raw data table is visible. Default 80px.
+- **SPC rules** — global default rule set stored in spc_rule_sets (material_method_id IS NULL). Per-combo overrides stored with material_method_id = first MMA by display_order. Resolved server-side via `GetEffectiveRuleSetForCombo(mmaID, maxSequence)` — returns most recent per-combo set with effective_from_sequence ≤ maxSequence, falls back to global. Frontend passes a single-element RuleSet array to computeViolations(). violations.ts supports multi-region arrays (boundary logic) but currently receives one resolved set per analyte. Per-combo sets are append-only (no delete/update) for ISO 17025 audit trail; global rule set is update-in-place (admin only, not audited). `errors.Is` required when checking sql.ErrNoRows from scanRuleSetRow — the error is wrapped by fmt.Errorf.
+- **MMA table conflates combo identity with analyte rows** — consider extracting a `method_materials` table as a proper combo anchor. Per-combo concerns (rule sets, etc.) currently key off first MMA by display_order as a known shortcut.
 
 ## Config
 
@@ -108,10 +110,10 @@ frontend/src/
     ├── Login.svelte
     ├── Setup.svelte
     ├── Shell.svelte        — navbar + content slot, resets scroll on view change
-    ├── Admin.svelte
+    ├── Admin.svelte        — accordion sections: User Management, SPC Rules (global)
     ├── DBPicker.svelte
     ├── Settings.svelte
-    ├── Library.svelte      — tabbed: Analytes, Methods, Materials, Combos, Limits
+    ├── Library.svelte      — tabbed: Analytes, Methods, Materials, Combos, Limits, Rules
     ├── DataEntry.svelte    — sidebar + grid + paste + save + pass/fail + chart-level comment
     └── ChartReview.svelte  — XmR + mR charts, combo picker, outlier toggle, raw data toggle, comment modal
 ```
@@ -129,15 +131,17 @@ frontend/  — Svelte app
 
 - Full project scaffold, auth, roles, session timeout
 - DB + migrations (v4), WAL mode, append-only enforcement
-- Library: analytes, methods, materials, MMA combos, drag-to-reorder, deactivate/activate, control limits with paste grid + soft delete
+- Library: analytes, methods, materials, MMA combos, drag-to-reorder, deactivate/activate, control limits with paste grid + soft delete, per-combo SPC rule sets with versioned history
 - Data entry: paste, save, pass/fail display, chart-level comments
 - Chart review: XmR + mR charts, outlier toggle, raw data toggle, n-per-row layout, comment modal, yellow dot indicators for commented points
 - Comment system: point-level and chart-level, append-only
 - Raw data table: violation indicators (OOC/WRN/TRD/RUN) with cell colouring + badges, limit tooltip on hover, click-to-comment opens existing modal with analyte context, Excel-like fixed-width columns, sticky seq column, stacked analyte headers, adjustable column width saved to config
 - Point shapes/colours: OOC=red circle, WRN=orange triangle, commented=yellow+larger radius, violation trumps comment for colour
 - Limit lines: per-segment with vertical connectors at region boundaries, supports changing limits mid-chart
+- SPC rule sets: global default (admin panel, edit-in-place), per-combo versioned overrides (Library → Rules tab), fully wired into violation detection in ChartReview
 
 ## What's next
 
-1. Trend detection against spc_rule_sets
-2. Audit log view
+1. Audit log view
+2. Refactor Library.svelte into per-tab components (it's getting large)
+3. Normalize MMA table — extract `method_materials` as a proper combo anchor

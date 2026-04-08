@@ -6,6 +6,10 @@ export function CreateMMARuleSet(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8,
   return window['go']['handlers']['SPCRuleSetHandler']['CreateMMARuleSet'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
+export function GetEffectiveRuleSetForCombo(arg1, arg2) {
+  return window['go']['handlers']['SPCRuleSetHandler']['GetEffectiveRuleSetForCombo'](arg1, arg2);
+}
+
 export function GetGlobalRuleSet() {
   return window['go']['handlers']['SPCRuleSetHandler']['GetGlobalRuleSet']();
 }

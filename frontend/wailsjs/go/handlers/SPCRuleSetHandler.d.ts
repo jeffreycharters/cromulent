@@ -4,6 +4,8 @@ import {models} from '../models';
 
 export function CreateMMARuleSet(arg1:number,arg2:number,arg3:boolean,arg4:boolean,arg5:number,arg6:number,arg7:boolean,arg8:number,arg9:boolean,arg10:number,arg11:number):Promise<void>;
 
+export function GetEffectiveRuleSetForCombo(arg1:number,arg2:number):Promise<models.SPCRuleSet>;
+
 export function GetGlobalRuleSet():Promise<models.SPCRuleSet>;
 
 export function GetRuleSetsForMMA(arg1:number):Promise<Array<models.SPCRuleSet>>;
