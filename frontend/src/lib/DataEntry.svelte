@@ -7,25 +7,22 @@
         GetChartResults,
     } from "../../wailsjs/go/handlers/DataEntryHandler";
 
+    import type { models } from "../../wailsjs/go/models";
+
     import { AddComment } from "../../wailsjs/go/handlers/CommentsHandler";
 
     export let currentUser: any;
 
-    interface Material {
-        id: number;
-        name: string;
-    }
-    interface Method {
-        id: number;
-        name: string;
-        materials: Material[];
-    }
+    type Method = models.MethodWithMaterials;
+    type Material = models.MaterialSummary;
+
     interface ComboAnalyte {
         mma_id: number;
         name: string;
         unit: string;
         display_order: number;
     }
+
     interface MeasurementResult {
         mma_id: number;
         value: number;
@@ -36,8 +33,9 @@
     }
 
     let methods: Method[] = [];
-    let selectedMethodID: number | null = null;
-    let selectedMaterialID: number | null = null;
+    let selectedMethodMaterialID: number | null = null;
+    let selectedMethodName = "";
+    let selectedMaterialName = ""
     let analytes: ComboAnalyte[] = [];
     let values: Record<number, string> = {};
     let results: Record<string, MeasurementResult> = {};
@@ -56,21 +54,20 @@
         }
     });
 
-    async function selectCombo(methodID: number, materialID: number) {
-        if (selectedMethodID === methodID && selectedMaterialID === materialID)
-            return;
-        selectedMethodID = methodID;
-        selectedMaterialID = materialID;
+    async function selectCombo(methodMaterialID: number, methodName: string, materialName: string) {
+        if (selectedMethodMaterialID === methodMaterialID) return;
+        selectedMethodMaterialID = methodMaterialID;
         values = {};
         results = {};
         try {
-            analytes = (await GetAnalytesForCombo(methodID, materialID)) ?? [];
+            analytes = (await GetAnalytesForCombo(methodMaterialID)) ?? [];
         } catch (e: any) {
             error = e.toString();
         }
-
         chartID = null;
         commentText = "";
+        selectedMethodName = methodName;
+            selectedMaterialName = materialName;
     }
 
     function handleCellPaste(e: ClipboardEvent, fromIndex: number) {
@@ -109,7 +106,7 @@
     }
 
     async function save() {
-        if (!selectedMethodID || !selectedMaterialID) return;
+      if (!selectedMethodMaterialID) return;
         const hasValues = Object.keys(values).length > 0;
         if (!hasValues) {
             error = "No values to save.";
@@ -123,12 +120,7 @@
             for (const [k, v] of Object.entries(values)) {
                 if (v !== "") payload[k] = parseFloat(v);
             }
-            chartID = await SaveChart(
-                selectedMethodID,
-                selectedMaterialID,
-                currentUser.id,
-                payload,
-            );
+            chartID = await SaveChart(selectedMethodMaterialID, currentUser.id, payload);
             const raw = (await GetChartResults(chartID)) ?? [];
             results = Object.fromEntries(
                 raw.map((r) => [r.mma_id, r]),
@@ -167,9 +159,8 @@
                 {#each method.materials as material}
                     <button
                         class="material-btn"
-                        class:active={selectedMethodID === method.id &&
-                            selectedMaterialID === material.id}
-                        on:click={() => selectCombo(method.id, material.id)}
+                        class:active={selectedMethodMaterialID === material.method_material_id}
+                        on:click={() => selectCombo(material.method_material_id, method.name, material.name)}
                     >
                         {material.name}
                     </button>
@@ -190,7 +181,7 @@
             </div>
         {/if}
 
-        {#if !selectedMethodID}
+        {#if !selectedMethodMaterialID}
             <div class="empty-state">
                 <p>Select a method and material from the sidebar to begin.</p>
             </div>
@@ -201,15 +192,8 @@
         {:else}
             <div class="combo-header">
                 <div>
-                    <h2>
-                        {methods.find((m) => m.id === selectedMethodID)?.name}
-                    </h2>
-                    <p class="subtitle">
-                        {methods
-                            .find((m) => m.id === selectedMethodID)
-                            ?.materials.find((m) => m.id === selectedMaterialID)
-                            ?.name}
-                    </p>
+                    <h2>{selectedMethodName}</h2>
+                    <p class="subtitle">{selectedMaterialName}</p>
                 </div>
                 <button
                     class="save-btn"
