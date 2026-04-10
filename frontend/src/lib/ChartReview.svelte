@@ -157,17 +157,15 @@
     }
 
     interface ComboOption {
-        methodID: number;
+        methodMaterialID: number;
         methodName: string;
-        materialID: number;
         materialName: string;
     }
 
     // --- state ---
 
     let combos: ComboOption[] = [];
-    let selectedMethodID: number | null = null;
-    let selectedMaterialID: number | null = null;
+    let selectedMethodMaterialID: number | null = null;
 
     let analytes: ComboAnalyte[] = [];
     let chartData: Record<string, ChartPoint[]> = {};
@@ -197,9 +195,8 @@
         const methods = (await ListMethodsWithMaterials()) ?? [];
         combos = methods.flatMap((m) =>
             (m.materials ?? []).map((mat) => ({
-                methodID: m.id,
+                methodMaterialID: mat.method_material_id,
                 methodName: m.name,
-                materialID: mat.id,
                 materialName: mat.name,
             })),
         );
@@ -229,13 +226,12 @@
     // --- actions ---
 
     async function selectCombo(combo: ComboOption) {
-        selectedMethodID = combo.methodID;
-        selectedMaterialID = combo.materialID;
+      if (!selectedMethodMaterialID) return;
         await loadCombo();
     }
 
     async function loadCombo() {
-        if (!selectedMethodID || !selectedMaterialID) return;
+      if (!selectedMethodMaterialID) return;
         loading = true;
         error = "";
         destroyCharts();
@@ -243,15 +239,11 @@
         analytes = [];
         comments = [];
         try {
-            const [ana, data, cmts] = await Promise.all([
-                GetAnalytesForCombo(selectedMethodID, selectedMaterialID),
-                GetComboChartData(
-                    selectedMethodID,
-                    selectedMaterialID,
-                    pointLimit,
-                ),
-                GetCommentsForCombo(selectedMethodID, selectedMaterialID),
-            ]);
+          const [ana, data, cmts] = await Promise.all([
+                 GetAnalytesForCombo(selectedMethodMaterialID),
+                 GetComboChartData(selectedMethodMaterialID, pointLimit),
+                 GetCommentsForCombo(selectedMethodMaterialID),
+             ]);
             analytes = (ana ?? []).sort(
                 (a, b) => a.display_order - b.display_order,
             );
@@ -605,11 +597,7 @@
                 modalComment.trim(),
                 currentUser.id,
             );
-            comments =
-                (await GetCommentsForCombo(
-                    selectedMethodID!,
-                    selectedMaterialID!,
-                )) ?? [];
+            comments = (await GetCommentsForCombo(selectedMethodMaterialID!)) ?? [];
             modalComment = "";
         } catch (e: any) {
             error = e?.toString() ?? "Failed to save comment";
@@ -676,8 +664,7 @@
         {#each combos as combo}
             <button
                 class="combo-card"
-                class:active={selectedMethodID === combo.methodID &&
-                    selectedMaterialID === combo.materialID}
+                class:active={selectedMethodMaterialID === combo.methodMaterialID}
                 on:click={() => selectCombo(combo)}
             >
                 <span class="combo-method">{combo.methodName}</span>
@@ -688,7 +675,7 @@
 </div>
 
 <!-- ── chart controls ─────────────────────────────────────────────────── -->
-{#if selectedMethodID && selectedMaterialID}
+{#if selectedMethodMaterialID}
     <div class="picker-bar secondary">
         <label class="limit-label">
             Points
