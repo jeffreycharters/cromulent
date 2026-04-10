@@ -211,10 +211,7 @@
         import("svelte").then(({ tick }) => tick().then(() => buildCharts()));
     }
 
-    $: chartableAnalytes = analytes.filter((a) => {
-        const pts = chartData[String(a.mma_id)] ?? [];
-        return pts.some((p) => p.ucl != null);
-    });
+    $: chartableAnalytes = analytes.filter((a) => a.render_chart);
 
     function onColWidthChange() {
         clearTimeout(colWidthDebounce);
@@ -224,14 +221,13 @@
     }
 
     // --- actions ---
-
     async function selectCombo(combo: ComboOption) {
-      if (!selectedMethodMaterialID) return;
-        await loadCombo();
+        selectedMethodMaterialID = combo.methodMaterialID;
+        await loadCombo(selectedMethodMaterialID);
     }
 
-    async function loadCombo() {
-      if (!selectedMethodMaterialID) return;
+    async function loadCombo(methodMaterialID = selectedMethodMaterialID) {
+        if (!methodMaterialID) return;
         loading = true;
         error = "";
         destroyCharts();
@@ -247,6 +243,8 @@
             analytes = (ana ?? []).sort(
                 (a, b) => a.display_order - b.display_order,
             );
+
+            console.log("analytes", analytes);
 
             ruleSetsByMMA = {};
             for (const analyte of analytes) {
@@ -867,8 +865,8 @@
 
 <!-- ── comment modal ──────────────────────────────────────────────────── -->
 {#if modalOpen && modalPoint}
-    <div class="modal-backdrop" on:click={closeModal}>
-        <div class="modal" on:click|stopPropagation>
+    <div class="modal-backdrop" on:click={closeModal} on:keydown={closeModal}>
+        <div class="modal" on:click|stopPropagation on:keypress|stopPropagation>
             <div class="modal-header">
                 <h3>
                     Sequence #{modalPoint.sequence_number}
