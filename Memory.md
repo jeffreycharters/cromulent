@@ -39,15 +39,16 @@ Core flow: technicians enter measurement data → reviewer checks charts, adds t
 
 - **users** — id, username, password_hash, role, active, created_at
 - **materials**, **methods**, **analytes** — basic lookup tables. Analytes have UNIQUE(name, unit).
-- **material_method_analytes (MMA)** — links material+method+analyte, has display_order, active. The core combo unit.
+- **method_materials** — links method+material, has active flag, created_at. UNIQUE(method_id, material_id). The combo anchor.
+- **material_method_analytes (MMA)** — links method_material+analyte, has display_order, render_chart. UNIQUE(method_material_id, analyte_id). No active flag — active lives on method_materials.
 - **control_limit_regions** — versioned per MMA by effective_from_sequence. Soft delete only. Three limit pairs: UCL/LCL (required), UWL/LWL, UIL/LIL.
-- **control_charts** — locked_at set immediately on save, immutable from creation.
+- **control_charts** — keyed by method_material_id. locked_at set immediately on save, immutable from creation.
 - **measurements** — append-only. sequence_number is per-MMA immutable run number. sequence_order is column position within a chart.
 - **comments** — measurement_id nullable (null = chart-level, set = point-level). Append-only.
-- **spc_rule_sets** — versioned per combo by effective_from_sequence. material_method_id NULL = global default. Append-only (no delete/update) for ISO 17025 audit trail integrity.
+- **spc_rule_sets** — versioned per combo by effective_from_sequence. method_material_id NULL = global default. Append-only (no delete/update) for ISO 17025 audit trail integrity. Global default is update-in-place (admin only).
 - **chart_metadata_fields / chart_metadata_values** — flexible metadata per chart.
 
-Migrations via `PRAGMA user_version`. Plan to merge all into single v1 before release.
+Migrations via `PRAGMA user_version`. Single v1 migration — clean slate, no legacy versions.
 
 ## Roles
 
@@ -69,8 +70,9 @@ All roles can create methods/materials/analytes/combos. Trust model is audit tra
 - **Clipboard parsing** — LibreOffice/Excel use text/html. Parse via DOMParser first, fall back to tab-split.
 - **Decimal separator** — only `.` accepted for now. Locale deferred.
 - **No LATERAL joins** — SQLite doesn't support them; use correlated subqueries.
-- **Combo-level deactivation** — operates on all analytes for a method+material at once
-- **Passthrough analytes** — analytes with no control_limit_regions are included for paste convenience but not charted. Raw data table still shows them; charts skip them via `chartableAnalytes` derived reactive.
+- **Combo-level deactivation** — active flag on method_materials, not on MMA rows. DeactivateCombo/ActivateCombo take methodMaterialID.
+- **Passthrough analytes** — analytes with no control_limit_regions are included for paste convenience but not charted. render_chart = false is a more explicit override; chartableAnalytes in ChartReview checks both render_chart AND presence of control limits.
+- **render_chart flag** — per-MMA row on material_method_analytes. Frontend owns the filtering; GetComboChartData returns all analytes regardless, raw data table shows everything.
 - **mR UCL** — derived from X chart limits: `(UCL - LCL) * 0.61`, not from data. mR scale: `(UCL - LCL) * 1.3`.
 - **Sig figs** — hardcoded at 3 via `sigFigs()`. Planned as per-user setting.
 - **limitLinesPlugin** — custom Chart.js plugin draws limit lines (mean, UCL/LCL, UWL/LWL, UIL/LIL) via `afterDatasetsDraw`. Passes `points` array (not a `lines` array) so it can draw per-segment lines when control limit regions change mid-chart. Vertical connector lines drawn at boundaries. mR chart uses static `lines` array (separate path in plugin). Replaces annotation plugin lines which had uncontrollable hit detection.
@@ -82,8 +84,8 @@ All roles can create methods/materials/analytes/combos. Trust model is audit tra
 - **Violation detection** — computed frontend-only in violations.ts from loaded window of ChartPoint[]. Four codes: OOC (outside UCL/LCL), WRN (2 of 3 outside warning limits), TRD (6-point trend), RUN (8 consecutive one side of mean). Thresholds driven by spc_rule_sets — see SPC rules below. ViolationMap keyed by measurement_id.
 - **Raw data table** — rows keyed by sequence_number (canonical, matches charts and paperwork). Value cells coloured by worst violation, all applicable badges shown. Limit values in native title tooltip. Click opens comment modal with analyte context. Excel-like fixed-width columns with full cell borders. Seq column sticky. Analyte headers stacked (name + unit on separate lines).
 - **RawDataColWidth** — user preference stored in config.json (`raw_data_col_width`). Loaded on mount, saved with 500ms debounce. Slider (40–160px, step 10) shown in controls bar only when raw data table is visible. Default 80px.
-- **SPC rules** — global default rule set stored in spc_rule_sets (material_method_id IS NULL). Per-combo overrides stored with material_method_id = first MMA by display_order. Resolved server-side via `GetEffectiveRuleSetForCombo(mmaID, maxSequence)` — returns most recent per-combo set with effective_from_sequence ≤ maxSequence, falls back to global. Frontend passes a single-element RuleSet array to computeViolations(). violations.ts supports multi-region arrays (boundary logic) but currently receives one resolved set per analyte. Per-combo sets are append-only (no delete/update) for ISO 17025 audit trail; global rule set is update-in-place (admin only, not audited). `errors.Is` required when checking sql.ErrNoRows from scanRuleSetRow — the error is wrapped by fmt.Errorf.
-- **MMA table conflates combo identity with analyte rows** — consider extracting a `method_materials` table as a proper combo anchor. Per-combo concerns (rule sets, etc.) currently key off first MMA by display_order as a known shortcut.
+- **SPC rules** — global default rule set stored in spc_rule_sets (method_material_id IS NULL). Per-combo overrides stored with method_material_id set. Resolved server-side via `GetEffectiveRuleSetForCombo(methodMaterialID, maxSequence)` — returns most recent per-combo set with effective_from_sequence ≤ maxSequence, falls back to global. Frontend passes a single-element RuleSet array to computeViolations(). violations.ts supports multi-region arrays (boundary logic) but currently receives one resolved set per analyte. Per-combo sets are append-only (no delete/update) for ISO 17025 audit trail; global rule set is update-in-place (admin only, not audited). `errors.Is` required when checking sql.ErrNoRows from scanRuleSetRow — the error is wrapped by fmt.Errorf.
+- **EnsureGlobalRuleSet** — called on first user creation (setup flow), not in migration. Seeds global spc_rule_set with method_material_id IS NULL.
 
 ## Config
 
@@ -97,6 +99,101 @@ type Config struct {
 ```
 
 Load-then-save pattern in handlers to avoid clobbering other fields.
+
+## Models
+
+```go
+type Analyte struct {
+    ID   int64  `json:"id"`
+    Name string `json:"name"`
+    Unit string `json:"unit"`
+}
+
+type Method struct {
+    ID          int64  `json:"id"`
+    Name        string `json:"name"`
+    Description string `json:"description"`
+}
+
+type Material struct {
+    ID          int64  `json:"id"`
+    Name        string `json:"name"`
+    Description string `json:"description"`
+}
+
+type MMAEntry struct {
+    ID               int64  `json:"id"`
+    MethodMaterialID int64  `json:"method_material_id"`
+    MaterialID       int64  `json:"material_id"`
+    MaterialName     string `json:"material_name"`
+    MethodID         int64  `json:"method_id"`
+    MethodName       string `json:"method_name"`
+    AnalyteID        int64  `json:"analyte_id"`
+    AnalyteName      string `json:"analyte_name"`
+    Unit             string `json:"unit"`
+    DisplayOrder     int    `json:"display_order"`
+    RenderChart      bool   `json:"render_chart"`
+    Active           bool   `json:"active"`  // from method_materials.active
+}
+
+type MethodWithMaterials struct {
+    ID        int64             `json:"id"`
+    Name      string            `json:"name"`
+    Materials []MaterialSummary `json:"materials"`
+}
+
+type MaterialSummary struct {
+    ID               int64  `json:"id"`
+    Name             string `json:"name"`
+    MethodMaterialID int64  `json:"method_material_id"`
+}
+
+type ComboAnalyte struct {
+    MMAID            int64  `json:"mma_id"`
+    MethodMaterialID int64  `json:"method_material_id"`
+    Name             string `json:"name"`
+    Unit             string `json:"unit"`
+    DisplayOrder     int    `json:"display_order"`
+    RenderChart      bool   `json:"render_chart"`
+}
+
+type SPCRuleSet struct {
+    ID                      int64  `json:"id"`
+    MethodMaterialID        *int64 `json:"methodMaterialId"`
+    EffectiveFromSequence   *int64 `json:"effectiveFromSequence"`
+    BeyondLimitsEnabled     bool   `json:"beyondLimitsEnabled"`
+    WarningLimitsEnabled    bool   `json:"warningLimitsEnabled"`
+    WarningConsecutiveCount int    `json:"warningConsecutiveCount"`
+    WarningTriggerCount     int    `json:"warningTriggerCount"`
+    TrendEnabled            bool   `json:"trendEnabled"`
+    TrendConsecutiveCount   int    `json:"trendConsecutiveCount"`
+    OneSideEnabled          bool   `json:"oneSideEnabled"`
+    OneSideConsecutiveCount int    `json:"oneSideConsecutiveCount"`
+    CreatedBy               int64  `json:"createdBy"`
+    CreatedAt               string `json:"createdAt"`
+}
+```
+
+## Handler signatures (key changes from refactor)
+
+| Handler | Function | Signature |
+|---|---|---|
+| MMAHandler | AddAnalyteToMMA | `(methodMaterialID, analyteID int64, displayOrder int)` |
+| MMAHandler | EnsureMethodMaterial | `(methodID, materialID int64) (int64, error)` — INSERT OR IGNORE, returns id |
+| MMAHandler | ListMMAsForMethod | `(methodID int64)` — joins through method_materials |
+| MMAHandler | DeactivateCombo | `(methodMaterialID int64)` |
+| MMAHandler | ActivateCombo | `(methodMaterialID int64)` |
+| MMAHandler | SetRenderChart | `(mmaID int64, render bool)` |
+| DataEntryHandler | ListMethodsWithMaterials | returns MaterialSummary with MethodMaterialID |
+| DataEntryHandler | GetAnalytesForCombo | `(methodMaterialID int64)` |
+| DataEntryHandler | SaveChart | `(methodMaterialID, technicianID int64, values map[string]float64)` |
+| ChartReviewHandler | GetComboChartData | `(methodMaterialID int64, limit int)` |
+| LimitsHandler | ListControlLimitRegionsForCombo | `(methodMaterialID int64)` |
+| LimitsHandler | DeleteControlLimitRegionSet | `(methodMaterialID int64, effectiveFromSequence int, userID int64)` |
+| CommentsHandler | GetCommentsForCombo | `(methodMaterialID int64)` |
+| SPCRuleSetHandler | GetRuleSetsForMMA | `(methodMaterialID int64)` |
+| SPCRuleSetHandler | CreateMMARuleSet | `(methodMaterialID int64, ...)` |
+| SPCRuleSetHandler | GetEffectiveRuleSetForCombo | `(methodMaterialID int64, sequence int64)` |
 
 ## Frontend structure
 
@@ -130,7 +227,8 @@ frontend/  — Svelte app
 ## What's done
 
 - Full project scaffold, auth, roles, session timeout
-- DB + migrations (v4), WAL mode, append-only enforcement
+- DB + migrations (v1 single clean migration), WAL mode, append-only enforcement
+- Schema: method_materials as proper combo anchor; MMA has render_chart flag; active lives on method_materials
 - Library: analytes, methods, materials, MMA combos, drag-to-reorder, deactivate/activate, control limits with paste grid + soft delete, per-combo SPC rule sets with versioned history
 - Data entry: paste, save, pass/fail display, chart-level comments
 - Chart review: XmR + mR charts, outlier toggle, raw data toggle, n-per-row layout, comment modal, yellow dot indicators for commented points
@@ -139,9 +237,10 @@ frontend/  — Svelte app
 - Point shapes/colours: OOC=red circle, WRN=orange triangle, commented=yellow+larger radius, violation trumps comment for colour
 - Limit lines: per-segment with vertical connectors at region boundaries, supports changing limits mid-chart
 - SPC rule sets: global default (admin panel, edit-in-place), per-combo versioned overrides (Library → Rules tab), fully wired into violation detection in ChartReview
+- All handlers updated for method_materials refactor and render_chart flag
 
 ## What's next
 
-1. Audit log view
-2. Refactor Library.svelte into per-tab components (it's getting large)
-3. Normalize MMA table — extract `method_materials` as a proper combo anchor
+1. Frontend updates for method_materials refactor — callers passing methodMaterialID instead of materialID+methodID pairs; render_chart toggle in Library combos tab
+2. Audit log view
+3. Refactor Library.svelte into per-tab components (it's getting large)
