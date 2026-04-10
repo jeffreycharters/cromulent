@@ -18,9 +18,11 @@ export namespace models {
 	}
 	export class ComboAnalyte {
 	    mma_id: number;
+	    method_material_id: number;
 	    name: string;
 	    unit: string;
 	    display_order: number;
+	    render_chart: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ComboAnalyte(source);
@@ -29,9 +31,11 @@ export namespace models {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.mma_id = source["mma_id"];
+	        this.method_material_id = source["method_material_id"];
 	        this.name = source["name"];
 	        this.unit = source["unit"];
 	        this.display_order = source["display_order"];
+	        this.render_chart = source["render_chart"];
 	    }
 	}
 	export class CommentResponse {
@@ -94,6 +98,7 @@ export namespace models {
 	}
 	export class MMAEntry {
 	    id: number;
+	    method_material_id: number;
 	    material_id: number;
 	    material_name: string;
 	    method_id: number;
@@ -102,6 +107,7 @@ export namespace models {
 	    analyte_name: string;
 	    unit: string;
 	    display_order: number;
+	    render_chart: boolean;
 	    active: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -111,6 +117,7 @@ export namespace models {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.method_material_id = source["method_material_id"];
 	        this.material_id = source["material_id"];
 	        this.material_name = source["material_name"];
 	        this.method_id = source["method_id"];
@@ -119,6 +126,7 @@ export namespace models {
 	        this.analyte_name = source["analyte_name"];
 	        this.unit = source["unit"];
 	        this.display_order = source["display_order"];
+	        this.render_chart = source["render_chart"];
 	        this.active = source["active"];
 	    }
 	}
@@ -141,6 +149,7 @@ export namespace models {
 	export class MaterialSummary {
 	    id: number;
 	    name: string;
+	    method_material_id: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new MaterialSummary(source);
@@ -150,6 +159,7 @@ export namespace models {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.method_material_id = source["method_material_id"];
 	    }
 	}
 	export class MeasurementResult {
@@ -232,7 +242,7 @@ export namespace models {
 	}
 	export class SPCRuleSet {
 	    id: number;
-	    materialMethodId?: number;
+	    methodMaterialId?: number;
 	    effectiveFromSequence?: number;
 	    beyondLimitsEnabled: boolean;
 	    warningLimitsEnabled: boolean;
@@ -252,7 +262,7 @@ export namespace models {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
-	        this.materialMethodId = source["materialMethodId"];
+	        this.methodMaterialId = source["methodMaterialId"];
 	        this.effectiveFromSequence = source["effectiveFromSequence"];
 	        this.beyondLimitsEnabled = source["beyondLimitsEnabled"];
 	        this.warningLimitsEnabled = source["warningLimitsEnabled"];

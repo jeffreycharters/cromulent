@@ -4,7 +4,7 @@ import "fmt"
 
 func EnsureGlobalRuleSet(createdBy int64) error {
 	var count int
-	if err := DB.QueryRow(`SELECT COUNT(*) FROM spc_rule_sets WHERE material_method_id IS NULL`).Scan(&count); err != nil {
+	if err := DB.QueryRow(`SELECT COUNT(*) FROM spc_rule_sets WHERE method_material_id IS NULL`).Scan(&count); err != nil {
 		return fmt.Errorf("check global rule set: %w", err)
 	}
 	if count > 0 {
@@ -12,7 +12,7 @@ func EnsureGlobalRuleSet(createdBy int64) error {
 	}
 	_, err := DB.Exec(`
 		INSERT INTO spc_rule_sets (
-			material_method_id, effective_from_sequence,
+			method_material_id, effective_from_sequence,
 			beyond_limits_enabled,
 			warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
 			trend_enabled, trend_consecutive_count,

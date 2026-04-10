@@ -16,34 +16,34 @@ func NewSPCRuleSetHandler() *SPCRuleSetHandler {
 
 func (h *SPCRuleSetHandler) GetGlobalRuleSet() (*models.SPCRuleSet, error) {
 	return scanRuleSet(db.DB.QueryRow(`
-		SELECT id, material_method_id, effective_from_sequence,
+		SELECT id, method_material_id, effective_from_sequence,
 			beyond_limits_enabled,
 			warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
 			trend_enabled, trend_consecutive_count,
 			one_side_enabled, one_side_consecutive_count,
 			created_by, created_at
 		FROM spc_rule_sets
-		WHERE material_method_id IS NULL
+		WHERE method_material_id IS NULL
 		ORDER BY id DESC
 		LIMIT 1`,
 	))
 }
 
-func (h *SPCRuleSetHandler) GetRuleSetsForMMA(mmaID int64) ([]models.SPCRuleSet, error) {
+func (h *SPCRuleSetHandler) GetRuleSetsForMMA(methodMaterialID int64) ([]models.SPCRuleSet, error) {
 	rows, err := db.DB.Query(`
-		SELECT id, material_method_id, effective_from_sequence,
+		SELECT id, method_material_id, effective_from_sequence,
 			beyond_limits_enabled,
 			warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
 			trend_enabled, trend_consecutive_count,
 			one_side_enabled, one_side_consecutive_count,
 			created_by, created_at
 		FROM spc_rule_sets
-		WHERE material_method_id = ?
+		WHERE method_material_id = ?
 		ORDER BY effective_from_sequence ASC`,
-		mmaID,
+		methodMaterialID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("get rule sets for mma: %w", err)
+		return nil, fmt.Errorf("get rule sets for combo: %w", err)
 	}
 	defer rows.Close()
 
@@ -58,6 +58,7 @@ func (h *SPCRuleSetHandler) GetRuleSetsForMMA(mmaID int64) ([]models.SPCRuleSet,
 	return results, nil
 }
 
+
 func (h *SPCRuleSetHandler) UpdateGlobalRuleSet(
 	beyondLimitsEnabled bool,
 	warningLimitsEnabled bool, warningConsecutiveCount, warningTriggerCount int,
@@ -71,7 +72,7 @@ func (h *SPCRuleSetHandler) UpdateGlobalRuleSet(
 			warning_limits_enabled = ?, warning_consecutive_count = ?, warning_trigger_count = ?,
 			trend_enabled = ?, trend_consecutive_count = ?,
 			one_side_enabled = ?, one_side_consecutive_count = ?
-		WHERE material_method_id IS NULL`,
+		WHERE method_material_id IS NULL`,
 		beyondLimitsEnabled,
 		warningLimitsEnabled, warningConsecutiveCount, warningTriggerCount,
 		trendEnabled, trendConsecutiveCount,
@@ -84,7 +85,7 @@ func (h *SPCRuleSetHandler) UpdateGlobalRuleSet(
 }
 
 func (h *SPCRuleSetHandler) CreateMMARuleSet(
-	mmaID int64,
+	methodMaterialID int64,
 	effectiveFromSequence int64,
 	beyondLimitsEnabled bool,
 	warningLimitsEnabled bool, warningConsecutiveCount, warningTriggerCount int,
@@ -94,14 +95,14 @@ func (h *SPCRuleSetHandler) CreateMMARuleSet(
 ) error {
 	_, err := db.DB.Exec(`
 		INSERT INTO spc_rule_sets (
-			material_method_id, effective_from_sequence,
+			method_material_id, effective_from_sequence,
 			beyond_limits_enabled,
 			warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
 			trend_enabled, trend_consecutive_count,
 			one_side_enabled, one_side_consecutive_count,
 			created_by
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		mmaID, effectiveFromSequence,
+		methodMaterialID, effectiveFromSequence,
 		beyondLimitsEnabled,
 		warningLimitsEnabled, warningConsecutiveCount, warningTriggerCount,
 		trendEnabled, trendConsecutiveCount,
@@ -109,7 +110,7 @@ func (h *SPCRuleSetHandler) CreateMMARuleSet(
 		createdBy,
 	)
 	if err != nil {
-		return fmt.Errorf("create mma rule set: %w", err)
+		return fmt.Errorf("create combo rule set: %w", err)
 	}
 	return nil
 }
@@ -131,7 +132,7 @@ func scanRuleSet(row rowScanner) (*models.SPCRuleSet, error) {
 func scanRuleSetRow(row rowScanner) (models.SPCRuleSet, error) {
 	var rs models.SPCRuleSet
 	err := row.Scan(
-		&rs.ID, &rs.MaterialMethodID, &rs.EffectiveFromSequence,
+		&rs.ID, &rs.MethodMaterialID, &rs.EffectiveFromSequence,
 		&rs.BeyondLimitsEnabled,
 		&rs.WarningLimitsEnabled, &rs.WarningConsecutiveCount, &rs.WarningTriggerCount,
 		&rs.TrendEnabled, &rs.TrendConsecutiveCount,
@@ -144,21 +145,20 @@ func scanRuleSetRow(row rowScanner) (models.SPCRuleSet, error) {
 	return rs, nil
 }
 
-func (h *SPCRuleSetHandler) GetEffectiveRuleSetForCombo(mmaID int64, sequence int64) (*models.SPCRuleSet, error) {
-	// Try most recent per-combo rule set effective at or before the given sequence
+func (h *SPCRuleSetHandler) GetEffectiveRuleSetForCombo(methodMaterialID int64, sequence int64) (*models.SPCRuleSet, error) {
 	row := db.DB.QueryRow(`
-		SELECT id, material_method_id, effective_from_sequence,
+		SELECT id, method_material_id, effective_from_sequence,
 			beyond_limits_enabled,
 			warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
 			trend_enabled, trend_consecutive_count,
 			one_side_enabled, one_side_consecutive_count,
 			created_by, created_at
 		FROM spc_rule_sets
-		WHERE material_method_id = ?
+		WHERE method_material_id = ?
 		  AND effective_from_sequence <= ?
 		ORDER BY effective_from_sequence DESC
 		LIMIT 1`,
-		mmaID, sequence,
+		methodMaterialID, sequence,
 	)
 	rs, err := scanRuleSetRow(row)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -168,16 +168,15 @@ func (h *SPCRuleSetHandler) GetEffectiveRuleSetForCombo(mmaID int64, sequence in
 		return &rs, nil
 	}
 
-	// Fall back to global rule set
 	globalRow := db.DB.QueryRow(`
-		SELECT id, material_method_id, effective_from_sequence,
+		SELECT id, method_material_id, effective_from_sequence,
 			beyond_limits_enabled,
 			warning_limits_enabled, warning_consecutive_count, warning_trigger_count,
 			trend_enabled, trend_consecutive_count,
 			one_side_enabled, one_side_consecutive_count,
 			created_by, created_at
 		FROM spc_rule_sets
-		WHERE material_method_id IS NULL
+		WHERE method_material_id IS NULL
 		ORDER BY id DESC
 		LIMIT 1`,
 	)

@@ -19,16 +19,18 @@ type Material struct {
 }
 
 type MMAEntry struct {
-	ID           int64  `json:"id"`
-	MaterialID   int64  `json:"material_id"`
-	MaterialName string `json:"material_name"`
-	MethodID     int64  `json:"method_id"`
-	MethodName   string `json:"method_name"`
-	AnalyteID    int64  `json:"analyte_id"`
-	AnalyteName  string `json:"analyte_name"`
-	Unit         string `json:"unit"`
-	DisplayOrder int    `json:"display_order"`
-	Active       bool   `json:"active"`
+    ID               int64  `json:"id"`
+    MethodMaterialID int64  `json:"method_material_id"`
+    MaterialID       int64  `json:"material_id"`
+    MaterialName     string `json:"material_name"`
+    MethodID         int64  `json:"method_id"`
+    MethodName       string `json:"method_name"`
+    AnalyteID        int64  `json:"analyte_id"`
+    AnalyteName      string `json:"analyte_name"`
+    Unit             string `json:"unit"`
+    DisplayOrder     int    `json:"display_order"`
+    RenderChart      bool   `json:"render_chart"`
+    Active           bool   `json:"active"`
 }
 
 type MethodWithMaterials struct {
@@ -38,15 +40,18 @@ type MethodWithMaterials struct {
 }
 
 type MaterialSummary struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	MethodMaterialID int64  `json:"method_material_id"`
 }
 
 type ComboAnalyte struct {
-	MMAID        int64  `json:"mma_id"`
-	Name         string `json:"name"`
-	Unit         string `json:"unit"`
-	DisplayOrder int    `json:"display_order"`
+    MMAID            int64  `json:"mma_id"`
+    MethodMaterialID int64  `json:"method_material_id"`
+    Name             string `json:"name"`
+    Unit             string `json:"unit"`
+    DisplayOrder     int    `json:"display_order"`
+    RenderChart      bool   `json:"render_chart"`
 }
 
 type ControlLimitRegion struct {

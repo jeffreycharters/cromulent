@@ -10,6 +10,6 @@ export function GetCommentsForChart(arg1) {
   return window['go']['handlers']['CommentsHandler']['GetCommentsForChart'](arg1);
 }
 
-export function GetCommentsForCombo(arg1, arg2) {
-  return window['go']['handlers']['CommentsHandler']['GetCommentsForCombo'](arg1, arg2);
+export function GetCommentsForCombo(arg1) {
+  return window['go']['handlers']['CommentsHandler']['GetCommentsForCombo'](arg1);
 }

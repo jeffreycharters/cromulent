@@ -6,4 +6,4 @@ export function AddComment(arg1:number,arg2:any,arg3:string,arg4:number):Promise
 
 export function GetCommentsForChart(arg1:number):Promise<Array<models.CommentResponse>>;
 
-export function GetCommentsForCombo(arg1:number,arg2:number):Promise<Array<models.CommentResponse>>;
+export function GetCommentsForCombo(arg1:number):Promise<Array<models.CommentResponse>>;

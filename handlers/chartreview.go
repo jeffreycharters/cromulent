@@ -14,7 +14,7 @@ func NewChartReviewHandler() *ChartReviewHandler {
 // GetComboChartData returns chart points for all analytes in a method+material combo,
 // keyed by mma_id, each ordered by sequence_number ascending.
 // limit <= 0 means no limit.
-func (h *ChartReviewHandler) GetComboChartData(materialID, methodID int64, limit int) (map[int64][]models.ChartPoint, error) {
+func (h *ChartReviewHandler) GetComboChartData(methodMaterialID int64, limit int) (map[int64][]models.ChartPoint, error) {
 	q := `
     SELECT
         m.material_method_analyte_id,
@@ -62,19 +62,18 @@ func (h *ChartReviewHandler) GetComboChartData(materialID, methodID int64, limit
         FROM measurements
         WHERE material_method_analyte_id IN (
             SELECT id FROM material_method_analytes
-            WHERE material_id = ? AND method_id = ? AND active = 1
+            WHERE method_material_id = ?
         )
         ORDER BY sequence_number DESC
         LIMIT ?
     ) m
     ORDER BY m.sequence_number ASC
 `
-
 	if limit <= 0 {
 		limit = -1
 	}
 
-	rows, err := db.DB.Query(q, materialID, methodID, limit)
+	rows, err := db.DB.Query(q, methodMaterialID, limit)
 	if err != nil {
 		return nil, err
 	}

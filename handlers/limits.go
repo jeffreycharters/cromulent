@@ -57,7 +57,7 @@ func (h *LimitsHandler) SaveControlLimitRegions(regions []models.ControlLimitReg
 }
 
 // ListControlLimitRegionsForCombo returns all non-deleted regions for a method+material combo.
-func (h *LimitsHandler) ListControlLimitRegionsForCombo(materialID, methodID int64) ([]models.ControlLimitRegion, error) {
+func (h *LimitsHandler) ListControlLimitRegionsForCombo(methodMaterialID int64) ([]models.ControlLimitRegion, error) {
 	rows, err := db.DB.Query(`
         SELECT
             clr.id,
@@ -74,9 +74,9 @@ func (h *LimitsHandler) ListControlLimitRegionsForCombo(materialID, methodID int
             clr.created_at
         FROM control_limit_regions clr
         JOIN material_method_analytes mma ON mma.id = clr.material_method_analyte_id
-        WHERE mma.material_id = ? AND mma.method_id = ? AND clr.deleted_at IS NULL
+        WHERE mma.method_material_id = ? AND clr.deleted_at IS NULL
         ORDER BY clr.effective_from_sequence, clr.material_method_analyte_id
-    `, materialID, methodID)
+    `, methodMaterialID)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (h *LimitsHandler) ListControlLimitRegionsForCombo(materialID, methodID int
 	return regions, rows.Err()
 }
 
-func (h *LimitsHandler) DeleteControlLimitRegionSet(materialID, methodID int64, effectiveFromSequence int, userID int64) error {
+func (h *LimitsHandler) DeleteControlLimitRegionSet(methodMaterialID int64, effectiveFromSequence int, userID int64) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.DB.Exec(`
         UPDATE control_limit_regions
@@ -105,9 +105,9 @@ func (h *LimitsHandler) DeleteControlLimitRegionSet(materialID, methodID int64, 
         WHERE effective_from_sequence = ?
           AND material_method_analyte_id IN (
               SELECT id FROM material_method_analytes
-              WHERE material_id = ? AND method_id = ?
+              WHERE method_material_id = ?
           )
           AND deleted_at IS NULL
-    `, now, userID, effectiveFromSequence, materialID, methodID)
+    `, now, userID, effectiveFromSequence, methodMaterialID)
 	return err
 }

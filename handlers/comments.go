@@ -50,17 +50,15 @@ func (h *CommentsHandler) GetCommentsForChart(chartID int64) ([]models.CommentRe
 	return results, nil
 }
 
-func (h *CommentsHandler) GetCommentsForCombo(materialID, methodID int64) ([]models.CommentResponse, error) {
+func (h *CommentsHandler) GetCommentsForCombo(methodMaterialID int64) ([]models.CommentResponse, error) {
 	rows, err := db.DB.Query(`
 		SELECT c.id, c.control_chart_id, c.measurement_id, c.text, c.user_id, u.username, c.created_at
 		FROM comments c
 		JOIN users u ON u.id = c.user_id
 		JOIN control_charts cc ON cc.id = c.control_chart_id
-		JOIN material_method_analytes mma ON mma.material_id = ? AND mma.method_id = ? AND mma.id IN (
-			SELECT material_method_analyte_id FROM measurements WHERE control_chart_id = cc.id LIMIT 1
-		)
+		WHERE cc.method_material_id = ?
 		ORDER BY c.created_at ASC
-	`, materialID, methodID)
+	`, methodMaterialID)
 	if err != nil {
 		return nil, err
 	}

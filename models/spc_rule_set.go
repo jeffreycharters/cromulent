@@ -2,7 +2,7 @@ package models
 
 type SPCRuleSet struct {
 	ID                      int64  `json:"id"`
-	MaterialMethodID        *int64 `json:"materialMethodId"`
+	MethodMaterialID        *int64 `json:"methodMaterialId"`
 	EffectiveFromSequence   *int64 `json:"effectiveFromSequence"`
 	BeyondLimitsEnabled     bool   `json:"beyondLimitsEnabled"`
 	WarningLimitsEnabled    bool   `json:"warningLimitsEnabled"`

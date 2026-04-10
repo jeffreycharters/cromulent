@@ -18,15 +18,15 @@ func NewDataEntryHandler() *DataEntryHandler {
 func (h *DataEntryHandler) ListMethodsWithMaterials() ([]models.MethodWithMaterials, error) {
 	rows, err := db.DB.Query(`
 		SELECT
-			met.id AS method_id,
-			met.name AS method_name,
-			mat.id AS material_id,
-			mat.name AS material_name
+			met.id,
+			met.name,
+			mat.id,
+			mat.name,
+			mm.id
 		FROM methods met
-		JOIN material_method_analytes mma ON mma.method_id = met.id
-		JOIN materials mat ON mat.id = mma.material_id
-		WHERE mma.active = 1
-		GROUP BY met.id, mat.id
+		JOIN method_materials mm ON mm.method_id = met.id
+		JOIN materials mat ON mat.id = mm.material_id
+		WHERE mm.active = 1
 		ORDER BY met.name, mat.name
 	`)
 	if err != nil {
@@ -38,9 +38,10 @@ func (h *DataEntryHandler) ListMethodsWithMaterials() ([]models.MethodWithMateri
 	index := map[int64]int{}
 
 	for rows.Next() {
-		var methodID, materialID int64
+		var methodID, materialID, mmID int64
 		var methodName, materialName string
-		if err := rows.Scan(&methodID, &methodName, &materialID, &materialName); err != nil {
+		if err := rows.Scan(&methodID, &methodName, &materialID, &materialName, &mmID); err != nil {
+
 			return nil, err
 		}
 		if _, ok := index[methodID]; !ok {
@@ -53,26 +54,23 @@ func (h *DataEntryHandler) ListMethodsWithMaterials() ([]models.MethodWithMateri
 		}
 		i := index[methodID]
 		methodMap[i].Materials = append(methodMap[i].Materials, models.MaterialSummary{
-			ID:   materialID,
-			Name: materialName,
-		})
+			ID:               materialID,
+			Name:             materialName,
+			MethodMaterialID: mmID,
+})
 	}
 	return methodMap, rows.Err()
 }
 
 // GetAnalytesForCombo returns the ordered analytes for a method+material combo.
-func (h *DataEntryHandler) GetAnalytesForCombo(methodID, materialID int64) ([]models.ComboAnalyte, error) {
+func (h *DataEntryHandler) GetAnalytesForCombo(methodMaterialID int64) ([]models.ComboAnalyte, error) {
 	rows, err := db.DB.Query(`
-		SELECT
-			mma.id,
-			a.name,
-			a.unit,
-			mma.display_order
+		SELECT mma.id, a.name, a.unit, mma.display_order, mma.render_chart
 		FROM material_method_analytes mma
 		JOIN analytes a ON a.id = mma.analyte_id
-		WHERE mma.method_id = ? AND mma.material_id = ? AND mma.active = 1
+		WHERE mma.method_material_id = ?
 		ORDER BY mma.display_order
-	`, methodID, materialID)
+	`, methodMaterialID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +79,7 @@ func (h *DataEntryHandler) GetAnalytesForCombo(methodID, materialID int64) ([]mo
 	var analytes []models.ComboAnalyte
 	for rows.Next() {
 		var a models.ComboAnalyte
-		if err := rows.Scan(&a.MMAID, &a.Name, &a.Unit, &a.DisplayOrder); err != nil {
+		if err := rows.Scan(&a.MMAID, &a.Name, &a.Unit, &a.DisplayOrder, &a.RenderChart); err != nil {
 			return nil, err
 		}
 		analytes = append(analytes, a)
@@ -91,7 +89,7 @@ func (h *DataEntryHandler) GetAnalytesForCombo(methodID, materialID int64) ([]mo
 
 // SaveChart creates a control_chart and its measurements in one transaction.
 // Values map is mma_id -> value, missing keys mean no measurement for that analyte.
-func (h *DataEntryHandler) SaveChart(methodID, materialID, technicianID int64, values map[string]float64) (int64, error) {
+func (h *DataEntryHandler) SaveChart(methodMaterialID, technicianID int64, values map[string]float64) (int64, error) {
 	tx, err := db.DB.Begin()
 	if err != nil {
 		return 0, err
@@ -101,9 +99,9 @@ func (h *DataEntryHandler) SaveChart(methodID, materialID, technicianID int64, v
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	res, err := tx.Exec(`
-		INSERT INTO control_charts (material_id, method_id, technician_id, created_at, locked_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, materialID, methodID, technicianID, now, now)
+    INSERT INTO control_charts (method_material_id, technician_id, created_at, locked_at)
+    VALUES (?, ?, ?, ?)
+`, methodMaterialID, technicianID, now, now)
 	if err != nil {
 		return 0, fmt.Errorf("insert chart: %w", err)
 	}

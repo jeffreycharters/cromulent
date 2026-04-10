@@ -71,13 +71,22 @@ CREATE TABLE IF NOT EXISTS analytes (
     UNIQUE(name, unit)
 );
 
+CREATE TABLE IF NOT EXISTS method_materials (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    method_id   INTEGER NOT NULL REFERENCES methods(id),
+    material_id INTEGER NOT NULL REFERENCES materials(id),
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(method_id, material_id)
+);
+
 CREATE TABLE IF NOT EXISTS material_method_analytes (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    material_id   INTEGER NOT NULL REFERENCES materials(id),
-    method_id     INTEGER NOT NULL REFERENCES methods(id),
-    analyte_id    INTEGER NOT NULL REFERENCES analytes(id),
-    display_order INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(material_id, method_id, analyte_id)
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    method_material_id INTEGER NOT NULL REFERENCES method_materials(id),
+    analyte_id         INTEGER NOT NULL REFERENCES analytes(id),
+    display_order      INTEGER NOT NULL DEFAULT 0,
+    render_chart       INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(method_material_id, analyte_id)
 );
 
 CREATE TABLE IF NOT EXISTS control_limit_regions (
@@ -91,14 +100,15 @@ CREATE TABLE IF NOT EXISTS control_limit_regions (
     uil                         REAL,
     lil                         REAL,
     effective_from_sequence     INTEGER NOT NULL,
+    deleted_at                  DATETIME,
+    deleted_by                  INTEGER REFERENCES users(id),
     created_by                  INTEGER NOT NULL REFERENCES users(id),
     created_at                  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS control_charts (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    material_id   INTEGER NOT NULL REFERENCES materials(id),
-    method_id     INTEGER NOT NULL REFERENCES methods(id),
+    method_material_id INTEGER NOT NULL REFERENCES method_materials(id),
     batch_id      TEXT,
     technician_id INTEGER NOT NULL REFERENCES users(id),
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -125,6 +135,7 @@ CREATE TABLE IF NOT EXISTS measurements (
     control_chart_id           INTEGER NOT NULL REFERENCES control_charts(id),
     material_method_analyte_id INTEGER NOT NULL REFERENCES material_method_analytes(id),
     value                      REAL NOT NULL,
+    sequence_number            INTEGER,
     sequence_order             INTEGER NOT NULL,
     entered_by                 INTEGER NOT NULL REFERENCES users(id),
     entered_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -140,53 +151,19 @@ CREATE TABLE IF NOT EXISTS comments (
 );
 
 CREATE TABLE IF NOT EXISTS spc_rule_sets (
-    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    beyond_sigma_enabled  INTEGER NOT NULL DEFAULT 1,
-    beyond_sigma_n        INTEGER NOT NULL DEFAULT 3,
-    run_trend_enabled     INTEGER NOT NULL DEFAULT 1,
-    run_trend_n           INTEGER NOT NULL DEFAULT 6,
-    one_side_enabled      INTEGER NOT NULL DEFAULT 1,
-    one_side_n            INTEGER NOT NULL DEFAULT 7,
-    effective_from_date   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_by            INTEGER NOT NULL REFERENCES users(id),
-    created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+    method_material_id         INTEGER REFERENCES method_materials(id),
+    effective_from_sequence    INTEGER,
+    beyond_limits_enabled      INTEGER NOT NULL DEFAULT 1,
+    warning_limits_enabled     INTEGER NOT NULL DEFAULT 1,
+    warning_consecutive_count  INTEGER NOT NULL DEFAULT 3,
+    warning_trigger_count      INTEGER NOT NULL DEFAULT 2,
+    trend_enabled              INTEGER NOT NULL DEFAULT 1,
+    trend_consecutive_count    INTEGER NOT NULL DEFAULT 6,
+    one_side_enabled           INTEGER NOT NULL DEFAULT 1,
+    one_side_consecutive_count INTEGER NOT NULL DEFAULT 8,
+    created_by                 INTEGER NOT NULL REFERENCES users(id),
+    created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );`,
-	},
-	{
-		version: 2,
-		sql:     `ALTER TABLE material_method_analytes ADD COLUMN active INTEGER NOT NULL DEFAULT 1;`,
-	},
-	{
-		version: 3,
-		sql:     `ALTER TABLE measurements ADD COLUMN sequence_number INTEGER;`,
-	},
-	{
-		version: 4,
-		sql: `ALTER TABLE control_limit_regions ADD COLUMN deleted_at DATETIME;
-    ALTER TABLE control_limit_regions ADD COLUMN deleted_by INTEGER REFERENCES users(id);`,
-	},
-	{
-		version: 5,
-		sql: `
-ALTER TABLE spc_rule_sets ADD COLUMN material_method_id INTEGER REFERENCES material_method_analytes(id);
-ALTER TABLE spc_rule_sets ADD COLUMN effective_from_sequence INTEGER;
-
-ALTER TABLE spc_rule_sets ADD COLUMN warning_limits_enabled INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE spc_rule_sets ADD COLUMN warning_consecutive_count INTEGER NOT NULL DEFAULT 3;
-ALTER TABLE spc_rule_sets ADD COLUMN warning_trigger_count INTEGER NOT NULL DEFAULT 2;
-
-ALTER TABLE spc_rule_sets DROP COLUMN beyond_sigma_n;
-ALTER TABLE spc_rule_sets DROP COLUMN run_trend_enabled;
-ALTER TABLE spc_rule_sets DROP COLUMN run_trend_n;
-ALTER TABLE spc_rule_sets DROP COLUMN one_side_enabled;
-ALTER TABLE spc_rule_sets DROP COLUMN one_side_n;
-ALTER TABLE spc_rule_sets DROP COLUMN beyond_sigma_enabled;
-ALTER TABLE spc_rule_sets DROP COLUMN effective_from_date;
-
-ALTER TABLE spc_rule_sets ADD COLUMN beyond_limits_enabled INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE spc_rule_sets ADD COLUMN trend_enabled INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE spc_rule_sets ADD COLUMN trend_consecutive_count INTEGER NOT NULL DEFAULT 6;
-ALTER TABLE spc_rule_sets ADD COLUMN one_side_enabled INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE spc_rule_sets ADD COLUMN one_side_consecutive_count INTEGER NOT NULL DEFAULT 8;`,
 	},
 }
