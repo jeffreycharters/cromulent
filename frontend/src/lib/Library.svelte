@@ -16,6 +16,7 @@
         RemoveAnalyteFromMMA,
         DeactivateCombo,
         ActivateCombo,
+        EnsureMethodMaterial,
     } from "../../wailsjs/go/handlers/MMAHandler";
     import {
         GetCurrentSequencesForMMAs,
@@ -93,9 +94,8 @@
     type LimitRow = (typeof LIMIT_ROWS)[number];
 
     interface ComboCard {
-        methodID: number;
+        methodMaterialID: number;
         methodName: string;
-        materialID: number;
         materialName: string;
         mmaIDs: number[];
     }
@@ -191,13 +191,12 @@
     $: limitComboCards = Object.values(
         mmas
             .filter((m) => m.active)
-            .reduce((acc: Record<string, ComboCard>, m: any) => {
-                const key = `${m.method_id}_${m.material_id}`;
+            .reduce((acc: Record<number, ComboCard>, m: any) => {
+                const key = m.method_material_id;
                 if (!acc[key]) {
                     acc[key] = {
-                        methodID: m.method_id,
+                        methodMaterialID: m.method_material_id,
                         methodName: m.method_name,
-                        materialID: m.material_id,
                         materialName: m.material_name,
                         mmaIDs: [],
                     };
@@ -215,17 +214,12 @@
         error = "";
         try {
             const ordered = mmas
-                .filter(
-                    (m) =>
-                        m.method_id === card.methodID &&
-                        m.material_id === card.materialID &&
-                        m.active,
-                )
+                .filter((m) => m.method_material_id === card.methodMaterialID && m.active)
                 .sort((a, b) => a.display_order - b.display_order);
             limitAnalytes = ordered;
 
             const [regions, seqs] = await Promise.all([
-                ListControlLimitRegionsForCombo(card.materialID, card.methodID),
+                ListControlLimitRegionsForCombo(card.methodMaterialID),
                 GetCurrentSequencesForMMAs(card.mmaIDs),
             ]);
 
@@ -300,17 +294,14 @@
     async function deleteRegionSet(effectiveFromSequence: number) {
         if (!selectedLimitCombo) return;
         try {
-            await DeleteControlLimitRegionSet(
-                selectedLimitCombo.materialID,
-                selectedLimitCombo.methodID,
-                effectiveFromSequence,
-                currentUser.id,
-            );
-            existingRegions =
-                (await ListControlLimitRegionsForCombo(
-                    selectedLimitCombo.materialID,
-                    selectedLimitCombo.methodID,
-                )) ?? [];
+          await DeleteControlLimitRegionSet(
+              selectedLimitCombo.methodMaterialID,
+              effectiveFromSequence,
+              currentUser.id,
+          );
+          existingRegions = (await ListControlLimitRegionsForCombo(
+              selectedLimitCombo.methodMaterialID,
+          )) ?? [];
             flash("Limit set removed.");
         } catch (e: any) {
             error = e.toString();
@@ -352,11 +343,9 @@
             }
 
             await SaveControlLimitRegions(regions);
-            existingRegions =
-                (await ListControlLimitRegionsForCombo(
-                    selectedLimitCombo.materialID,
-                    selectedLimitCombo.methodID,
-                )) ?? [];
+            existingRegions = (await ListControlLimitRegionsForCombo(
+                selectedLimitCombo.methodMaterialID,
+            )) ?? [];
             resetNewGrid();
             flash("Limits saved.");
         } catch (e: any) {
@@ -369,14 +358,8 @@
     // --- Rules tab logic ---
 
     function firstMMAID(card: ComboCard): number {
-        // First by display_order — same ordering used elsewhere in the file
         const ordered = mmas
-            .filter(
-                (m) =>
-                    m.method_id === card.methodID &&
-                    m.material_id === card.materialID &&
-                    m.active,
-            )
+            .filter((m) => m.method_material_id === card.methodMaterialID && m.active)
             .sort((a, b) => a.display_order - b.display_order);
         return ordered[0]?.id ?? card.mmaIDs[0];
     }
@@ -558,12 +541,7 @@
             return;
         }
         try {
-            await AddAnalyteToMMA(
-                mmaMaterialID,
-                mmaMethodID,
-                mmaAnalyteID,
-                mmaDisplayOrder,
-            );
+          await AddAnalyteToMMA(await EnsureMethodMaterial(mmaMethodID, mmaMaterialID), mmaAnalyteID, mmaDisplayOrder);
             mmaAnalyteID = null;
             mmaDisplayOrder = 0;
             mmas = await ListAllMMAs();
@@ -674,12 +652,7 @@
             return;
         const nextOrder = draggableAnalytes.length;
         try {
-            await AddAnalyteToMMA(
-                selectedMaterialID,
-                selectedMethodID,
-                addingAnalyteID,
-                nextOrder,
-            );
+          await AddAnalyteToMMA(await EnsureMethodMaterial(selectedMethodID, selectedMaterialID), addingAnalyteID, nextOrder);
             addingAnalyteID = null;
             mmas = await ListAllMMAs();
             flash("Analyte added.");
@@ -689,15 +662,17 @@
     }
 
     async function deactivateCombo() {
-        if (!selectedMaterialID || !selectedMethodID) return;
-        await DeactivateCombo(selectedMaterialID, selectedMethodID);
+      const selectedMethodMaterialID = await EnsureMethodMaterial(selectedMethodID, selectedMaterialID);
+      if (!selectedMethodMaterialID) return;
+          await DeactivateCombo(selectedMethodMaterialID);
         mmas = await ListAllMMAs();
         flash("Combo deactivated.");
     }
 
     async function activateCombo() {
-        if (!selectedMaterialID || !selectedMethodID) return;
-        await ActivateCombo(selectedMaterialID, selectedMethodID);
+      const selectedMethodMaterialID = await EnsureMethodMaterial(selectedMethodID, selectedMaterialID);
+      if (!selectedMethodMaterialID) return;
+         await ActivateCombo(selectedMethodMaterialID);
         mmas = await ListAllMMAs();
         flash("Combo activated.");
     }
