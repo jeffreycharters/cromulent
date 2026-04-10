@@ -1,6 +1,10 @@
 {
   "extends": "@tsconfig/svelte/tsconfig.json",
   "compilerOptions": {
+    "preserveValueImports": false,
+    "importsNotUsedAsValues": "remove",
+    "verbatimModuleSyntax": true,
+    "ignoreDeprecations": "6.0",
     "target": "ESNext",
     "useDefineForClassFields": true,
     "module": "ESNext",
