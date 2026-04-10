@@ -58,7 +58,6 @@ func (h *SPCRuleSetHandler) GetRuleSetsForMMA(methodMaterialID int64) ([]models.
 	return results, nil
 }
 
-
 func (h *SPCRuleSetHandler) UpdateGlobalRuleSet(
 	beyondLimitsEnabled bool,
 	warningLimitsEnabled bool, warningConsecutiveCount, warningTriggerCount int,

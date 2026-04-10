@@ -198,7 +198,7 @@
                 methodMaterialID: mat.method_material_id,
                 methodName: m.name,
                 materialName: mat.name,
-            })),
+            }))
         );
         rawDataColWidth = await GetRawDataColWidth();
     });
@@ -235,13 +235,13 @@
         analytes = [];
         comments = [];
         try {
-          const [ana, data, cmts] = await Promise.all([
-                 GetAnalytesForCombo(selectedMethodMaterialID),
-                 GetComboChartData(selectedMethodMaterialID, pointLimit),
-                 GetCommentsForCombo(selectedMethodMaterialID),
-             ]);
+            const [ana, data, cmts] = await Promise.all([
+                GetAnalytesForCombo(selectedMethodMaterialID),
+                GetComboChartData(selectedMethodMaterialID, pointLimit),
+                GetCommentsForCombo(selectedMethodMaterialID),
+            ]);
             analytes = (ana ?? []).sort(
-                (a, b) => a.display_order - b.display_order,
+                (a, b) => a.display_order - b.display_order
             );
 
             console.log("analytes", analytes);
@@ -255,7 +255,7 @@
                         : 0;
                 const rs = await GetEffectiveRuleSetForCombo(
                     analyte.mma_id,
-                    maxSeq,
+                    maxSeq
                 );
                 ruleSetsByMMA[analyte.mma_id] = rs
                     ? [
@@ -303,13 +303,13 @@
             while (labels.length < 20) labels.push("");
 
             const mrValues = points.map((p, i) =>
-                i === 0 ? null : Math.abs(p.value - points[i - 1].value),
+                i === 0 ? null : Math.abs(p.value - points[i - 1].value)
             );
 
             const violations = violationsByAnalyte[analyte.mma_id];
 
             const xCanvas = document.getElementById(
-                `chart-x-${analyte.mma_id}`,
+                `chart-x-${analyte.mma_id}`
             ) as HTMLCanvasElement | null;
 
             if (xCanvas) {
@@ -342,7 +342,7 @@
                                     commentsByMeasurement[p.measurement_id]
                                         ?.length > 0
                                         ? 5
-                                        : 3,
+                                        : 3
                                 ),
                                 pointStyle: points.map((p) => {
                                     const codes =
@@ -364,7 +364,7 @@
                         e,
                         "nearest",
                         { intersect: false },
-                        false,
+                        false
                     );
                     if (elements.length === 0) return;
                     const idx = elements[0].index;
@@ -373,7 +373,7 @@
             }
 
             const mrCanvas = document.getElementById(
-                `chart-mr-${analyte.mma_id}`,
+                `chart-mr-${analyte.mma_id}`
             ) as HTMLCanvasElement | null;
 
             if (mrCanvas) {
@@ -505,7 +505,7 @@
     function mrChartOptions(
         ucl: number | null,
         points: ChartPoint[],
-        mrPoints: Omit<ChartPoint, "value">[],
+        mrPoints: Omit<ChartPoint, "value">[]
     ) {
         const annotations: Record<string, any> = {};
 
@@ -518,7 +518,7 @@
 
         if (yMax != null) {
             const mrValues = points.map((p, i) =>
-                i === 0 ? null : Math.abs(p.value - points[i - 1].value),
+                i === 0 ? null : Math.abs(p.value - points[i - 1].value)
             );
             mrValues.forEach((mr, i) => {
                 if (mr == null || mr <= yMax) return;
@@ -570,7 +570,7 @@
     function openModal(
         point: ChartPoint,
         analyteName?: string,
-        analyteUnit?: string,
+        analyteUnit?: string
     ) {
         modalPoint = point;
         modalAnalyteName = analyteName ?? null;
@@ -593,9 +593,10 @@
                 modalPoint.control_chart_id,
                 modalPoint.measurement_id,
                 modalComment.trim(),
-                currentUser.id,
+                currentUser.id
             );
-            comments = (await GetCommentsForCombo(selectedMethodMaterialID!)) ?? [];
+            comments =
+                (await GetCommentsForCombo(selectedMethodMaterialID!)) ?? [];
             modalComment = "";
         } catch (e: any) {
             error = e?.toString() ?? "Failed to save comment";
@@ -640,7 +641,7 @@
             const ruleSets = ruleSetsByMMA[analyte.mma_id] ?? [];
             violationsByAnalyte[analyte.mma_id] = computeViolations(
                 points,
-                ruleSets,
+                ruleSets
             );
         }
     }
@@ -649,10 +650,10 @@
         new Set(
             analytes.flatMap((a) =>
                 (chartData[String(a.mma_id)] ?? []).map(
-                    (p) => p.sequence_number,
-                ),
-            ),
-        ),
+                    (p) => p.sequence_number
+                )
+            )
+        )
     ).sort((a, b) => a - b);
 </script>
 
@@ -662,7 +663,8 @@
         {#each combos as combo}
             <button
                 class="combo-card"
-                class:active={selectedMethodMaterialID === combo.methodMaterialID}
+                class:active={selectedMethodMaterialID ===
+                    combo.methodMaterialID}
                 on:click={() => selectCombo(combo)}
             >
                 <span class="combo-method">{combo.methodName}</span>
@@ -694,7 +696,11 @@
                 <option value={5}>5</option>
             </select>
         </label>
-        <button class="btn-primary" disabled={loading} on:click={loadCombo}>
+        <button
+            class="btn-primary"
+            disabled={loading}
+            on:click={() => loadCombo(selectedMethodMaterialID)}
+        >
             {loading ? "Loading…" : "Reload"}
         </button>
         {#if analytes.length > 0}
@@ -789,11 +795,11 @@
                             {@const points =
                                 chartData[String(analyte.mma_id)] ?? []}
                             {@const p = points.find(
-                                (pt) => pt.sequence_number === seq,
+                                (pt) => pt.sequence_number === seq
                             )}
                             {@const violations = p
                                 ? (violationsByAnalyte[analyte.mma_id]?.get(
-                                      p.measurement_id,
+                                      p.measurement_id
                                   ) ?? [])
                                 : []}
                             {@const worst = worstViolation(violations)}
@@ -827,7 +833,7 @@
                                               ? `LIL: ${sigFigs(p.lil)}`
                                               : null,
                                           ...violations.map(
-                                              (v) => VIOLATION_LABELS[v],
+                                              (v) => VIOLATION_LABELS[v]
                                           ),
                                       ]
                                           .filter(Boolean)
@@ -911,7 +917,7 @@
                         <div class="comment">
                             <span class="comment-meta"
                                 >{c.username} · {new Date(
-                                    c.created_at,
+                                    c.created_at
                                 ).toLocaleString()}</span
                             >
                             <p class="comment-text">{c.text}</p>

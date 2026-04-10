@@ -57,7 +57,7 @@ func (h *DataEntryHandler) ListMethodsWithMaterials() ([]models.MethodWithMateri
 			ID:               materialID,
 			Name:             materialName,
 			MethodMaterialID: mmID,
-})
+		})
 	}
 	return methodMap, rows.Err()
 }

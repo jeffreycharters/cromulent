@@ -19,18 +19,18 @@ type Material struct {
 }
 
 type MMAEntry struct {
-    ID               int64  `json:"id"`
-    MethodMaterialID int64  `json:"method_material_id"`
-    MaterialID       int64  `json:"material_id"`
-    MaterialName     string `json:"material_name"`
-    MethodID         int64  `json:"method_id"`
-    MethodName       string `json:"method_name"`
-    AnalyteID        int64  `json:"analyte_id"`
-    AnalyteName      string `json:"analyte_name"`
-    Unit             string `json:"unit"`
-    DisplayOrder     int    `json:"display_order"`
-    RenderChart      bool   `json:"render_chart"`
-    Active           bool   `json:"active"`
+	ID               int64  `json:"id"`
+	MethodMaterialID int64  `json:"method_material_id"`
+	MaterialID       int64  `json:"material_id"`
+	MaterialName     string `json:"material_name"`
+	MethodID         int64  `json:"method_id"`
+	MethodName       string `json:"method_name"`
+	AnalyteID        int64  `json:"analyte_id"`
+	AnalyteName      string `json:"analyte_name"`
+	Unit             string `json:"unit"`
+	DisplayOrder     int    `json:"display_order"`
+	RenderChart      bool   `json:"render_chart"`
+	Active           bool   `json:"active"`
 }
 
 type MethodWithMaterials struct {
@@ -46,12 +46,12 @@ type MaterialSummary struct {
 }
 
 type ComboAnalyte struct {
-    MMAID            int64  `json:"mma_id"`
-    MethodMaterialID int64  `json:"method_material_id"`
-    Name             string `json:"name"`
-    Unit             string `json:"unit"`
-    DisplayOrder     int    `json:"display_order"`
-    RenderChart      bool   `json:"render_chart"`
+	MMAID            int64  `json:"mma_id"`
+	MethodMaterialID int64  `json:"method_material_id"`
+	Name             string `json:"name"`
+	Unit             string `json:"unit"`
+	DisplayOrder     int    `json:"display_order"`
+	RenderChart      bool   `json:"render_chart"`
 }
 
 type ControlLimitRegion struct {
@@ -82,15 +82,15 @@ type MeasurementResult struct {
 }
 
 type ChartPoint struct {
-    MeasurementID  int64	`json:"measurement_id"`
-    ControlChartID int64	`json:"control_chart_id"`
-    SequenceNumber int		`json:"sequence_number"`
-    Value          float64	`json:"value"`
-    Mean           *float64	`json:"mean"`
-    UCL            *float64	`json:"ucl"`
-    LCL            *float64	`json:"lcl"`
-    UWL            *float64	`json:"uwl"`
-    LWL            *float64	`json:"lwl"`
-    UIL            *float64	`json:"uil"`
-    LIL            *float64	`json:"lil"`
+	MeasurementID  int64    `json:"measurement_id"`
+	ControlChartID int64    `json:"control_chart_id"`
+	SequenceNumber int      `json:"sequence_number"`
+	Value          float64  `json:"value"`
+	Mean           *float64 `json:"mean"`
+	UCL            *float64 `json:"ucl"`
+	LCL            *float64 `json:"lcl"`
+	UWL            *float64 `json:"uwl"`
+	LWL            *float64 `json:"lwl"`
+	UIL            *float64 `json:"uil"`
+	LIL            *float64 `json:"lil"`
 }

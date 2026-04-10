@@ -91,7 +91,7 @@
                 trendConsecutiveCount,
                 oneSideEnabled,
                 oneSideConsecutiveCount,
-                currentUser.id,
+                currentUser.id
             );
             ruleSet = await GetGlobalRuleSet();
             populateRuleForm(ruleSet);

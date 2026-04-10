@@ -14,7 +14,6 @@
     export let currentUser: any;
 
     type Method = models.MethodWithMaterials;
-    type Material = models.MaterialSummary;
 
     interface ComboAnalyte {
         mma_id: number;
@@ -35,12 +34,11 @@
     let methods: Method[] = [];
     let selectedMethodMaterialID: number | null = null;
     let selectedMethodName = "";
-    let selectedMaterialName = ""
+    let selectedMaterialName = "";
     let analytes: ComboAnalyte[] = [];
     let values: Record<number, string> = {};
     let results: Record<string, MeasurementResult> = {};
     let error = "";
-    let success = "";
     let saving = false;
     let chartID: number | null = null;
     let commentText = "";
@@ -54,7 +52,11 @@
         }
     });
 
-    async function selectCombo(methodMaterialID: number, methodName: string, materialName: string) {
+    async function selectCombo(
+        methodMaterialID: number,
+        methodName: string,
+        materialName: string
+    ) {
         if (selectedMethodMaterialID === methodMaterialID) return;
         selectedMethodMaterialID = methodMaterialID;
         values = {};
@@ -67,7 +69,7 @@
         chartID = null;
         commentText = "";
         selectedMethodName = methodName;
-            selectedMaterialName = materialName;
+        selectedMaterialName = materialName;
     }
 
     function handleCellPaste(e: ClipboardEvent, fromIndex: number) {
@@ -82,7 +84,7 @@
             const cells = doc.querySelectorAll("td, th");
             if (cells.length > 0) {
                 parts = Array.from(cells).map(
-                    (td) => td.textContent?.trim() ?? "",
+                    (td) => td.textContent?.trim() ?? ""
                 );
             }
         }
@@ -106,7 +108,7 @@
     }
 
     async function save() {
-      if (!selectedMethodMaterialID) return;
+        if (!selectedMethodMaterialID) return;
         const hasValues = Object.keys(values).length > 0;
         if (!hasValues) {
             error = "No values to save.";
@@ -120,20 +122,22 @@
             for (const [k, v] of Object.entries(values)) {
                 if (v !== "") payload[k] = parseFloat(v);
             }
-            chartID = await SaveChart(selectedMethodMaterialID, currentUser.id, payload);
+            chartID = await SaveChart(
+                selectedMethodMaterialID,
+                currentUser.id,
+                payload
+            );
             const raw = (await GetChartResults(chartID)) ?? [];
             results = Object.fromEntries(
-                raw.map((r) => [r.mma_id, r]),
+                raw.map((r) => [r.mma_id, r])
             ) as Record<string, MeasurementResult>;
             values = {};
-
         } catch (e: any) {
             error = e.toString();
         } finally {
             saving = false;
         }
     }
-
 
     async function saveComment() {
         if (!chartID || !commentText.trim()) return;
@@ -159,8 +163,14 @@
                 {#each method.materials as material}
                     <button
                         class="material-btn"
-                        class:active={selectedMethodMaterialID === material.method_material_id}
-                        on:click={() => selectCombo(material.method_material_id, method.name, material.name)}
+                        class:active={selectedMethodMaterialID ===
+                            material.method_material_id}
+                        on:click={() =>
+                            selectCombo(
+                                material.method_material_id,
+                                method.name,
+                                material.name
+                            )}
                     >
                         {material.name}
                     </button>

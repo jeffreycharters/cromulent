@@ -40,7 +40,7 @@
     ];
 
     $: visibleItems = navItems.filter((item) =>
-        item.roles.includes(currentUser?.role),
+        item.roles.includes(currentUser?.role)
     );
 </script>
 

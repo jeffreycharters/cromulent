@@ -84,12 +84,12 @@ func (h *ChartReviewHandler) GetComboChartData(methodMaterialID int64, limit int
 		var mmaID int64
 		var p models.ChartPoint
 		if err := rows.Scan(
-    &mmaID, &p.MeasurementID, &p.ControlChartID, &p.SequenceNumber, &p.Value,
-    &p.Mean, &p.UCL, &p.LCL,
-    &p.UWL, &p.LWL, &p.UIL, &p.LIL,
-); err != nil {
-    return nil, err
-}
+			&mmaID, &p.MeasurementID, &p.ControlChartID, &p.SequenceNumber, &p.Value,
+			&p.Mean, &p.UCL, &p.LCL,
+			&p.UWL, &p.LWL, &p.UIL, &p.LIL,
+		); err != nil {
+			return nil, err
+		}
 		result[mmaID] = append(result[mmaID], p)
 	}
 	return result, rows.Err()

@@ -116,10 +116,10 @@ func (h *MMAHandler) ListAllMMAs() ([]models.MMAEntry, error) {
 	for rows.Next() {
 		var e models.MMAEntry
 		if err := rows.Scan(
-    &e.ID, &e.MethodMaterialID, &e.MaterialID, &e.MaterialName,
-    &e.MethodID, &e.MethodName,
-    &e.AnalyteID, &e.AnalyteName, &e.Unit, &e.DisplayOrder, &e.Active,
-); err != nil {
+			&e.ID, &e.MethodMaterialID, &e.MaterialID, &e.MaterialName,
+			&e.MethodID, &e.MethodName,
+			&e.AnalyteID, &e.AnalyteName, &e.Unit, &e.DisplayOrder, &e.Active,
+		); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)
