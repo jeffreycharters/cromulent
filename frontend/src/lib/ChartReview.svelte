@@ -838,8 +838,6 @@
                                 on:click={() =>
                                     p &&
                                     openModal(p, analyte.name, analyte.unit)}
-                                role="button"
-                                tabindex="0"
                                 on:keydown={(e) =>
                                     e.key === "Enter" &&
                                     p &&

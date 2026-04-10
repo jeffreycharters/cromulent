@@ -815,8 +815,9 @@
                 </label>
                 <div class="combos-fields">
                     <div class="field">
-                        <label>Method</label>
+                        <label for="method-select">Method</label>
                         <select
+                            id="method-select"
                             bind:value={selectedMethodID}
                             on:change={() => {
                                 selectedMaterialID = null;
@@ -831,12 +832,11 @@
                     </div>
                     {#if selectedMethodID}
                         <div class="field">
-                            <label>Material</label>
+                            <label for="material-select">Material</label>
                             <select
+                                id="material-select"
                                 bind:value={selectedMaterialID}
-                                on:change={() => {
-                                    addingAnalyteID = null;
-                                }}
+                                on:change={() => { addingAnalyteID = null; }}
                             >
                                 <option value={null}>— Select material —</option
                                 >
