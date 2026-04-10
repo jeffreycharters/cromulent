@@ -157,17 +157,15 @@
     }
 
     interface ComboOption {
-        methodID: number;
+        methodMaterialID: number;
         methodName: string;
-        materialID: number;
         materialName: string;
     }
 
     // --- state ---
 
     let combos: ComboOption[] = [];
-    let selectedMethodID: number | null = null;
-    let selectedMaterialID: number | null = null;
+    let selectedMethodMaterialID: number | null = null;
 
     let analytes: ComboAnalyte[] = [];
     let chartData: Record<string, ChartPoint[]> = {};
@@ -197,9 +195,8 @@
         const methods = (await ListMethodsWithMaterials()) ?? [];
         combos = methods.flatMap((m) =>
             (m.materials ?? []).map((mat) => ({
-                methodID: m.id,
+                methodMaterialID: mat.method_material_id,
                 methodName: m.name,
-                materialID: mat.id,
                 materialName: mat.name,
             })),
         );
@@ -214,10 +211,7 @@
         import("svelte").then(({ tick }) => tick().then(() => buildCharts()));
     }
 
-    $: chartableAnalytes = analytes.filter((a) => {
-        const pts = chartData[String(a.mma_id)] ?? [];
-        return pts.some((p) => p.ucl != null);
-    });
+    $: chartableAnalytes = analytes.filter((a) => a.render_chart);
 
     function onColWidthChange() {
         clearTimeout(colWidthDebounce);
@@ -227,15 +221,13 @@
     }
 
     // --- actions ---
-
     async function selectCombo(combo: ComboOption) {
-        selectedMethodID = combo.methodID;
-        selectedMaterialID = combo.materialID;
-        await loadCombo();
+        selectedMethodMaterialID = combo.methodMaterialID;
+        await loadCombo(selectedMethodMaterialID);
     }
 
-    async function loadCombo() {
-        if (!selectedMethodID || !selectedMaterialID) return;
+    async function loadCombo(methodMaterialID = selectedMethodMaterialID) {
+        if (!methodMaterialID) return;
         loading = true;
         error = "";
         destroyCharts();
@@ -243,18 +235,16 @@
         analytes = [];
         comments = [];
         try {
-            const [ana, data, cmts] = await Promise.all([
-                GetAnalytesForCombo(selectedMethodID, selectedMaterialID),
-                GetComboChartData(
-                    selectedMethodID,
-                    selectedMaterialID,
-                    pointLimit,
-                ),
-                GetCommentsForCombo(selectedMethodID, selectedMaterialID),
-            ]);
+          const [ana, data, cmts] = await Promise.all([
+                 GetAnalytesForCombo(selectedMethodMaterialID),
+                 GetComboChartData(selectedMethodMaterialID, pointLimit),
+                 GetCommentsForCombo(selectedMethodMaterialID),
+             ]);
             analytes = (ana ?? []).sort(
                 (a, b) => a.display_order - b.display_order,
             );
+
+            console.log("analytes", analytes);
 
             ruleSetsByMMA = {};
             for (const analyte of analytes) {
@@ -605,11 +595,7 @@
                 modalComment.trim(),
                 currentUser.id,
             );
-            comments =
-                (await GetCommentsForCombo(
-                    selectedMethodID!,
-                    selectedMaterialID!,
-                )) ?? [];
+            comments = (await GetCommentsForCombo(selectedMethodMaterialID!)) ?? [];
             modalComment = "";
         } catch (e: any) {
             error = e?.toString() ?? "Failed to save comment";
@@ -676,8 +662,7 @@
         {#each combos as combo}
             <button
                 class="combo-card"
-                class:active={selectedMethodID === combo.methodID &&
-                    selectedMaterialID === combo.materialID}
+                class:active={selectedMethodMaterialID === combo.methodMaterialID}
                 on:click={() => selectCombo(combo)}
             >
                 <span class="combo-method">{combo.methodName}</span>
@@ -688,7 +673,7 @@
 </div>
 
 <!-- ── chart controls ─────────────────────────────────────────────────── -->
-{#if selectedMethodID && selectedMaterialID}
+{#if selectedMethodMaterialID}
     <div class="picker-bar secondary">
         <label class="limit-label">
             Points
@@ -851,8 +836,6 @@
                                 on:click={() =>
                                     p &&
                                     openModal(p, analyte.name, analyte.unit)}
-                                role="button"
-                                tabindex="0"
                                 on:keydown={(e) =>
                                     e.key === "Enter" &&
                                     p &&
@@ -882,8 +865,8 @@
 
 <!-- ── comment modal ──────────────────────────────────────────────────── -->
 {#if modalOpen && modalPoint}
-    <div class="modal-backdrop" on:click={closeModal}>
-        <div class="modal" on:click|stopPropagation>
+    <div class="modal-backdrop" on:click={closeModal} on:keydown={closeModal}>
+        <div class="modal" on:click|stopPropagation on:keypress|stopPropagation>
             <div class="modal-header">
                 <h3>
                     Sequence #{modalPoint.sequence_number}

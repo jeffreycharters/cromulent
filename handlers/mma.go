@@ -90,18 +90,20 @@ func (h *MMAHandler) ListAllMMAs() ([]models.MMAEntry, error) {
 	rows, err := db.DB.Query(`
     SELECT
         mma.id,
-        mma.material_id,
+        mm.id AS method_material_id,
+        mm.material_id,
         mat.name AS material_name,
-        mma.method_id,
+        mm.method_id,
         met.name AS method_name,
         mma.analyte_id,
         a.name AS analyte_name,
         a.unit,
         mma.display_order,
-        mma.active
+        mm.active
     FROM material_method_analytes mma
-    JOIN materials mat ON mat.id = mma.material_id
-    JOIN methods met ON met.id = mma.method_id
+    JOIN method_materials mm ON mm.id = mma.method_material_id
+    JOIN materials mat ON mat.id = mm.material_id
+    JOIN methods met ON met.id = mm.method_id
     JOIN analytes a ON a.id = mma.analyte_id
     ORDER BY met.name, mat.name, mma.display_order
 `)
@@ -114,10 +116,10 @@ func (h *MMAHandler) ListAllMMAs() ([]models.MMAEntry, error) {
 	for rows.Next() {
 		var e models.MMAEntry
 		if err := rows.Scan(
-			&e.ID, &e.MaterialID, &e.MaterialName,
-			&e.MethodID, &e.MethodName,
-			&e.AnalyteID, &e.AnalyteName, &e.Unit, &e.DisplayOrder, &e.Active,
-		); err != nil {
+    &e.ID, &e.MethodMaterialID, &e.MaterialID, &e.MaterialName,
+    &e.MethodID, &e.MethodName,
+    &e.AnalyteID, &e.AnalyteName, &e.Unit, &e.DisplayOrder, &e.Active,
+); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)
