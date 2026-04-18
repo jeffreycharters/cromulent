@@ -79,7 +79,6 @@
     // MMA wiring form
     let mmaMethodID: number | null = null;
     let mmaMaterialID: number | null = null;
-    let mmaAnalyteID: number | null = null;
     let mmaDisplayOrder = 0;
 
     const LIMIT_ROWS = [
@@ -166,8 +165,8 @@
             if (rows.length > 0) {
                 return Array.from(rows).map((row) =>
                     Array.from(row.querySelectorAll("td, th")).map(
-                        (cell) => cell.textContent?.trim() ?? ""
-                    )
+                        (cell) => cell.textContent?.trim() ?? "",
+                    ),
                 );
             }
         }
@@ -203,7 +202,7 @@
                 }
                 acc[key].mmaIDs.push(m.id);
                 return acc;
-            }, {})
+            }, {}),
     );
 
     // Rules tab uses same combo source
@@ -217,7 +216,7 @@
                 .filter(
                     (m) =>
                         m.method_material_id === card.methodMaterialID &&
-                        m.active
+                        m.active,
                 )
                 .sort((a, b) => a.display_order - b.display_order);
             limitAnalytes = ordered;
@@ -246,7 +245,7 @@
     function handleLimitPaste(
         e: ClipboardEvent,
         fromRow: number,
-        fromCol: number
+        fromCol: number,
     ) {
         e.preventDefault();
         const parsed = parseClipboard(e);
@@ -270,13 +269,13 @@
             acc[k].push(r);
             return acc;
         },
-        {}
+        {},
     );
 
     function getRegionValue(
         regions: unknown,
         mmaID: number,
-        row: LimitRow
+        row: LimitRow,
     ): string {
         const list = regions as any[];
         if (!list) return "—";
@@ -301,11 +300,11 @@
             await DeleteControlLimitRegionSet(
                 selectedLimitCombo.methodMaterialID,
                 effectiveFromSequence,
-                currentUser.id
+                currentUser.id,
             );
             existingRegions =
                 (await ListControlLimitRegionsForCombo(
-                    selectedLimitCombo.methodMaterialID
+                    selectedLimitCombo.methodMaterialID,
                 )) ?? [];
             flash("Limit set removed.");
         } catch (e: any) {
@@ -350,7 +349,7 @@
             await SaveControlLimitRegions(regions);
             existingRegions =
                 (await ListControlLimitRegionsForCombo(
-                    selectedLimitCombo.methodMaterialID
+                    selectedLimitCombo.methodMaterialID,
                 )) ?? [];
             resetNewGrid();
             flash("Limits saved.");
@@ -367,7 +366,7 @@
         const ordered = mmas
             .filter(
                 (m) =>
-                    m.method_material_id === card.methodMaterialID && m.active
+                    m.method_material_id === card.methodMaterialID && m.active,
             )
             .sort((a, b) => a.display_order - b.display_order);
         return ordered[0]?.id ?? card.mmaIDs[0];
@@ -423,7 +422,7 @@
             existingRuleSets = (ruleSets ?? []).sort(
                 (a: any, b: any) =>
                     (a.effectiveFromSequence ?? 0) -
-                    (b.effectiveFromSequence ?? 0)
+                    (b.effectiveFromSequence ?? 0),
             );
 
             // Seed form from most recent per-combo set, or global if none
@@ -480,13 +479,13 @@
                 rTrendConsecutiveCount,
                 rOneSideEnabled,
                 rOneSideConsecutiveCount,
-                currentUser.id
+                currentUser.id,
             );
             const updated = await GetRuleSetsForMMA(mmaID);
             existingRuleSets = (updated ?? []).sort(
                 (a: any, b: any) =>
                     (a.effectiveFromSequence ?? 0) -
-                    (b.effectiveFromSequence ?? 0)
+                    (b.effectiveFromSequence ?? 0),
             );
             rulesSuccess = "Rule set saved.";
             setTimeout(() => (rulesSuccess = ""), 3000);
@@ -517,7 +516,7 @@
         try {
             await CreateMethod(
                 newMethodName.trim(),
-                newMethodDescription.trim()
+                newMethodDescription.trim(),
             );
             newMethodName = "";
             newMethodDescription = "";
@@ -533,32 +532,12 @@
         try {
             await CreateMaterial(
                 newMaterialName.trim(),
-                newMaterialDescription.trim()
+                newMaterialDescription.trim(),
             );
             newMaterialName = "";
             newMaterialDescription = "";
             materials = await ListMaterials();
             flash("Material added.");
-        } catch (e: any) {
-            error = e.toString();
-        }
-    }
-
-    async function addMMA() {
-        if (!mmaMethodID || !mmaMaterialID || !mmaAnalyteID) {
-            error = "Select a method, material, and analyte.";
-            return;
-        }
-        try {
-            await AddAnalyteToMMA(
-                await EnsureMethodMaterial(mmaMethodID, mmaMaterialID),
-                mmaAnalyteID,
-                mmaDisplayOrder
-            );
-            mmaAnalyteID = null;
-            mmaDisplayOrder = 0;
-            mmas = await ListAllMMAs();
-            flash("Analyte added to combo.");
         } catch (e: any) {
             error = e.toString();
         }
@@ -576,7 +555,7 @@
 
     function comboActiveForMat(matID: number): boolean {
         const combo = mmas.find(
-            (m) => m.method_id === selectedMethodID && m.material_id === matID
+            (m) => m.method_id === selectedMethodID && m.material_id === matID,
         );
         if (!combo) return true;
         return combo.active;
@@ -594,40 +573,12 @@
         }
     }
 
-    interface MMAMaterialGroup {
-        materialName: string;
-        analytes: any[];
-    }
-    interface MMAMethodGroup {
-        methodName: string;
-        materials: Record<string, MMAMaterialGroup>;
-    }
-
-    let mmaGrouped: Record<string, MMAMethodGroup> = {};
-
-    $: mmaGrouped = mmas.reduce(
-        (acc: Record<string, MMAMethodGroup>, entry: any) => {
-            const mk = `${entry.method_id}`;
-            if (!acc[mk])
-                acc[mk] = { methodName: entry.method_name, materials: {} };
-            const matk = `${entry.material_id}`;
-            if (!acc[mk].materials[matk])
-                acc[mk].materials[matk] = {
-                    materialName: entry.material_name,
-                    analytes: [],
-                };
-            acc[mk].materials[matk].analytes.push(entry);
-            return acc;
-        },
-        {} as Record<string, MMAMethodGroup>
-    );
-
     $: {
         if (mmaMethodID && mmaMaterialID) {
             const existing = mmas.filter(
                 (m) =>
                     m.method_id === mmaMethodID &&
-                    m.material_id === mmaMaterialID
+                    m.material_id === mmaMaterialID,
             );
             mmaDisplayOrder = existing.length
                 ? Math.max(...existing.map((m) => m.display_order)) + 1
@@ -635,22 +586,12 @@
         }
     }
 
-    $: orderConflict =
-        mmaMethodID && mmaMaterialID && mmaAnalyteID
-            ? mmas.some(
-                  (m) =>
-                      m.method_id === mmaMethodID &&
-                      m.material_id === mmaMaterialID &&
-                      m.display_order === mmaDisplayOrder
-              )
-            : false;
-
     $: if (selectedMethodID && selectedMaterialID) {
         draggableAnalytes = mmas
             .filter(
                 (m) =>
                     m.method_id === selectedMethodID &&
-                    m.material_id === selectedMaterialID
+                    m.material_id === selectedMaterialID,
             )
             .sort((a, b) => a.display_order - b.display_order)
             .map((m) => ({ ...m, id: m.id }));
@@ -668,10 +609,10 @@
             await AddAnalyteToMMA(
                 await EnsureMethodMaterial(
                     selectedMethodID,
-                    selectedMaterialID
+                    selectedMaterialID,
                 ),
                 addingAnalyteID,
-                nextOrder
+                nextOrder,
             );
             addingAnalyteID = null;
             mmas = await ListAllMMAs();
@@ -684,7 +625,7 @@
     async function deactivateCombo() {
         const selectedMethodMaterialID = await EnsureMethodMaterial(
             selectedMethodID,
-            selectedMaterialID
+            selectedMaterialID,
         );
         if (!selectedMethodMaterialID) return;
         await DeactivateCombo(selectedMethodMaterialID);
@@ -695,7 +636,7 @@
     async function activateCombo() {
         const selectedMethodMaterialID = await EnsureMethodMaterial(
             selectedMethodID,
-            selectedMaterialID
+            selectedMaterialID,
         );
         if (!selectedMethodMaterialID) return;
         await ActivateCombo(selectedMethodMaterialID);
@@ -708,7 +649,7 @@
               const combo = mmas.find(
                   (m) =>
                       m.method_id === selectedMethodID &&
-                      m.material_id === mat.id
+                      m.material_id === mat.id,
               );
               if (!combo) return true;
               if (combo.active) return true;
@@ -724,8 +665,8 @@
                           (m) =>
                               m.method_id === selectedMethodID &&
                               m.material_id === selectedMaterialID &&
-                              m.analyte_id === a.id
-                      )
+                              m.analyte_id === a.id,
+                      ),
               )
             : [];
 </script>
@@ -872,7 +813,7 @@
                                     {@const linked = mmas.some(
                                         (m) =>
                                             m.method_id === selectedMethodID &&
-                                            m.material_id === mat.id
+                                            m.material_id === mat.id,
                                     )}
                                     <option value={mat.id}>
                                         {mat.name}{linked
@@ -1045,7 +986,7 @@
                                                     {getRegionValue(
                                                         regions,
                                                         a.id,
-                                                        row
+                                                        row,
                                                     )}
                                                 </td>
                                             {/each}
@@ -1100,7 +1041,7 @@
                                 {#each LIMIT_ROWS as row, ri}
                                     <tr>
                                         <td class="row-label">{row}</td>
-                                        {#each limitAnalytes as a, ci}
+                                        {#each limitAnalytes as _, ci}
                                             <td class="limit-cell editable">
                                                 <input
                                                     type="text"
@@ -1114,7 +1055,7 @@
                                                         handleLimitPaste(
                                                             e,
                                                             ri,
-                                                            ci
+                                                            ci,
                                                         )}
                                                 />
                                             </td>
